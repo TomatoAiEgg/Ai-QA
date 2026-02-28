@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG 知识库管理</title>
+    <style>
+        :root {
+            --primary-color: #5b8cff;
+            --primary-dark: #3d6ef7;
+            --success-color: #48bb78;
+            --text-color: #2d3748;
+            --bg-gradient: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--bg-gradient);
+            color: var(--text-color);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--card-bg);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+            padding: 48px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        h1 {
+            color: #1a202c;
+            margin-bottom: 40px;
+            text-align: center;
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .upload-section {
+            border: 2px dashed #e2e8f0;
+            border-radius: 20px;
+            padding: 60px;
+            text-align: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-bottom: 40px;
+            background: #f8fafc;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-section.drag-over {
+            border-color: var(--primary-color);
+            background: #f0f7ff;
+            transform: scale(1.02);
+            box-shadow: 0 10px 25px -5px rgba(91, 140, 255, 0.25);
+        }
+
+        .upload-section:hover {
+            border-color: var(--primary-color);
+            background: #f0f7ff;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(91, 140, 255, 0.15);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #5b8cff 0%, #3d6ef7 100%);
+            color: white;
+            border: none;
+            padding: 16px 40px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(91, 140, 255, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .upload-btn svg {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 8px 25px rgba(91, 140, 255, 0.4);
+        }
+
+        .upload-btn:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 40px;
+            color: #718096;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            padding: 10px 20px;
+            border-radius: 12px;
+        }
+
+        .back-link:hover {
+            color: var(--primary-color);
+            background: rgba(91, 140, 255, 0.05);
+        }
+
+        #status {
+            margin-top: 20px;
+            text-align: center;
+            font-weight: 600;
+            min-height: 24px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .success { color: #38a169; background: #f0fff4; display: inline-block; padding: 8px 16px !important; }
+        .error { color: #e53e3e; background: #fff5f5; display: inline-block; padding: 8px 16px !important; }
+        .loading { color: #3182ce; }
+
+        .doc-list {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 20px;
+        }
+
+        .doc-list th {
+            background: transparent;
+            color: #718096;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 16px 24px;
+            border-bottom: 2px solid #edf2f7;
+            text-align: left;
+        }
+
+        .doc-list td {
+            padding: 20px 24px;
+            background: white;
+            border-bottom: 1px solid #edf2f7;
+            color: #4a5568;
+            font-size: 0.95rem;
+            transition: background 0.2s;
+        }
+
+        .doc-list tr:first-child td:first-child { border-top-left-radius: 12px; }
+        .doc-list tr:first-child td:last-child { border-top-right-radius: 12px; }
+        .doc-list tr:last-child td:first-child { border-bottom-left-radius: 12px; border-bottom: none; }
+        .doc-list tr:last-child td:last-child { border-bottom-right-radius: 12px; border-bottom: none; }
+
+        .doc-list tr:hover td {
+            background: #f8fafc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RAG 知识库管理</h1>
+        
+        <div class="upload-section">
+            <input type="file" id="fileInput" class="file-input" accept=".txt,.md,.pdf,.docx">
+            <label for="fileInput" class="upload-btn">
+                <svg viewBox="0 0 24 24">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                </svg>
+                上传新文档
+            </label>
+            <p style="margin-top: 20px; color: #a0aec0; font-size: 0.9rem;">
+                点击按钮或拖拽文件到此处上传<br>
+                <span style="font-size: 0.8rem; opacity: 0.8">支持 TXT, Markdown, PDF, Word 文档</span>
+            </p>
+        </div>
+
+        <div id="status"></div>
+
+        <table class="doc-list" id="docList">
+            <thead>
+                <tr>
+                    <th>文件名</th>
+                    <th>切片数量</th>
+                    <th>上传时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- 文档列表将通过 JS 动态加载 -->
+            </tbody>
+        </table>
+
+        <a href="/" class="back-link">
+            <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: currentColor;">
+                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+            </svg>
+            返回聊天首页
+        </a>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const statusDiv = document.getElementById('status');
+        const docListBody = document.querySelector('#docList tbody');
+        const uploadSection = document.querySelector('.upload-section');
+
+        // 加载文档列表
+        async function loadDocuments() {
+            try {
+                const response = await fetch('/ai/documents');
+                const documents = await response.json();
+                
+                docListBody.innerHTML = documents.map(doc => `
+                    <tr>
+                        <td>${doc.filename || '未知文件'}</td>
+                        <td>${doc.chunk_count}</td>
+                        <td>${new Date(parseInt(doc.upload_time)).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+                
+                if (documents.length === 0) {
+                    docListBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#a0aec0;">暂无文档</td></tr>';
+                }
+            } catch (error) {
+                console.error('加载文档列表失败', error);
+            }
+        }
+
+        // 页面加载时获取列表
+        loadDocuments();
+
+        // 统一处理文件上传逻辑
+        async function handleFileUpload(file) {
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            statusDiv.textContent = '正在上传处理中...';
+            statusDiv.className = 'loading';
+
+            try {
+                const response = await fetch('/ai/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.text();
+                
+                if (response.ok) {
+                    statusDiv.textContent = '✅ ' + result;
+                    statusDiv.className = 'success';
+                    // 上传成功后刷新列表
+                    loadDocuments();
+                } else {
+                    throw new Error(result || '上传失败');
+                }
+            } catch (error) {
+                statusDiv.textContent = '❌ ' + error.message;
+                statusDiv.className = 'error';
+            }
+        }
+
+        // 点击上传处理
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            await handleFileUpload(file);
+            // 清空选择，允许重复上传同名文件
+            fileInput.value = '';
+        });
+
+        // 拖拽相关事件处理
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadSection.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadSection.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadSection.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            uploadSection.classList.add('drag-over');
+        }
+
+        function unhighlight(e) {
+            uploadSection.classList.remove('drag-over');
+        }
+
+        uploadSection.addEventListener('drop', async (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                await handleFileUpload(files[0]);
+            }
+        });
+    </script>
+</body>
+</html>
