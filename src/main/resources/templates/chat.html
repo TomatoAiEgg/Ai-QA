@@ -50,6 +50,72 @@
             letter-spacing: -0.5px;
         }
 
+        .chat-options {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 24px;
+            background: #f8fafc;
+            border-bottom: 1px solid #edf2f7;
+            height: 48px;
+        }
+
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #4a5568;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e0;
+            transition: .3s;
+            border-radius: 22px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(18px);
+        }
+
         .chat-messages {
             flex: 1;
             padding: 20px;
@@ -204,13 +270,57 @@
                 max-width: 85%;
             }
         }
+
+        .rag-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.2s ease;
+            backdrop-filter: blur(4px);
+        }
+
+        .rag-link:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .rag-link svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
     </style>
 </head>
 
 <body>
 <div class="chat-container">
-    <div class="chat-header">
-        <h1>苏三AI问答助手</h1>
+    <div class="chat-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h1>苏三 AI 问答助手</h1>
+        <a href="/rag" class="rag-link">
+            <svg viewBox="0 0 24 24">
+                <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z"/>
+            </svg>
+            知识库管理
+        </a>
+    </div>
+    <div class="chat-options">
+        <label class="switch-container">
+            <div class="switch">
+                <input type="checkbox" id="ragSwitch">
+                <span class="slider"></span>
+            </div>
+            <span>启用 RAG 知识库增强</span>
+        </label>
     </div>
     <div class="chat-messages" id="chatMessages"></div>
     <div class="chat-input">
@@ -228,6 +338,7 @@
     const questionInput = document.getElementById('questionInput');
     const sendButton = document.getElementById('sendButton');
     const chatMessages = document.getElementById('chatMessages');
+    const ragSwitch = document.getElementById('ragSwitch');
     let isBotResponding = false;
 
     // 输入验证
@@ -300,19 +411,23 @@
             // 显示加载状态
             const typingIndicator = createTypingIndicator();
 
-            const response = await fetch('/ai/chatByOllama', {
+            // 根据开关状态选择 API 接口
+            const apiEndpoint = ragSwitch.checked ? '/ai/chatByRag' : '/ai/chatByOllama';
+            
+            const response = await fetch(apiEndpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'text/event-stream'
                 },
-                body: JSON.stringify({question}),
+                body: JSON.stringify(question),
             });
 
             typingIndicator.remove();
             await handleBotResponse(response); // 处理流式响应
 
         } catch (error) {
+            console.error(error);
             displayMessage('bot', '暂时无法处理您的请求，请稍后再试');
         } finally {
             isBotResponding = false;
