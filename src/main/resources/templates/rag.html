@@ -298,6 +298,17 @@
             e.stopPropagation();
         }
 
+        // Hide back link if in iframe
+        if (window.self !== window.top) {
+            const backLink = document.querySelector('.back-link');
+            if (backLink) backLink.style.display = 'none';
+            // Optional: Adjust container style for iframe
+            document.body.style.padding = '20px';
+            document.body.style.minHeight = 'auto';
+            document.querySelector('.container').style.boxShadow = 'none';
+            document.querySelector('.container').style.border = 'none';
+        }
+
         ['dragenter', 'dragover'].forEach(eventName => {
             uploadSection.addEventListener(eventName, highlight, false);
         });
