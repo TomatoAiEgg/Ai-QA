@@ -3,9 +3,8 @@ package cn.net.susan.ai.config;
 import org.springframework.ai.chat.memory.InMemoryChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.ollama.OllamaEmbeddingModel;
-import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiEmbeddingModel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -27,22 +26,21 @@ public class ChatMemoryConfiguration {
 
     @Bean
     @Primary
-    public ChatModel primaryChatModel(ObjectProvider<OpenAiChatModel> openAiChatModelProvider,
-                                      ObjectProvider<OllamaChatModel> ollamaChatModelProvider) {
+    public ChatModel primaryChatModel(ObjectProvider<OpenAiChatModel> openAiChatModelProvider) {
         OpenAiChatModel openAi = openAiChatModelProvider.getIfAvailable();
-        if (openAi != null) {
-            return openAi;
+        if (openAi == null) {
+            throw new IllegalStateException("未找到可用的 ChatModel，请检查 OpenAI 配置");
         }
-        OllamaChatModel ollama = ollamaChatModelProvider.getIfAvailable();
-        if (ollama == null) {
-            throw new IllegalStateException("未找到可用的 ChatModel，请检查 OpenAI 或 Ollama 配置");
-        }
-        return ollama;
+        return openAi;
     }
 
     @Bean
     @Primary
-    public EmbeddingModel primaryEmbeddingModel(OllamaEmbeddingModel ollamaEmbeddingModel) {
-        return ollamaEmbeddingModel;
+    public EmbeddingModel primaryEmbeddingModel(ObjectProvider<OpenAiEmbeddingModel> openAiEmbeddingModelProvider) {
+        OpenAiEmbeddingModel openAiEmbedding = openAiEmbeddingModelProvider.getIfAvailable();
+        if (openAiEmbedding == null) {
+            throw new IllegalStateException("未找到可用的 EmbeddingModel，请检查 OpenAI 配置");
+        }
+        return openAiEmbedding;
     }
 }

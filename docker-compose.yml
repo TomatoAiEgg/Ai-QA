@@ -5,7 +5,7 @@ services:
     image: pgvector/pgvector:pg16
     container_name: susan-ai-pgvector
     ports:
-      - "5432:5432"
+      - "15432:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

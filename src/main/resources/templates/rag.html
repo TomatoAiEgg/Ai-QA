@@ -174,12 +174,138 @@
         .doc-list tr:hover td {
             background: #f8fafc;
         }
+
+        /* 切片预览弹窗样式 */
+        .preview-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .preview-modal.active {
+            display: flex;
+        }
+
+        .preview-content {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #edf2f7;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .preview-header h3 {
+            margin: 0;
+            color: #1a202c;
+            font-size: 1.2rem;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #718096;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #e53e3e;
+        }
+
+        .preview-body {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .chunk-item {
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .chunk-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: #718096;
+        }
+
+        .chunk-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #2d3748;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .preview-stats {
+            background: #edf2f7;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+
+        .preview-btn {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 10px;
+        }
+
+        .preview-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(72, 187, 120, 0.4);
+        }
+
+        .action-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>RAG 知识库管理</h1>
-        
+
         <div class="upload-section">
             <input type="file" id="fileInput" class="file-input" accept=".txt,.md,.pdf,.docx">
             <label for="fileInput" class="upload-btn">
@@ -202,6 +328,7 @@
                     <th>文件名</th>
                     <th>切片数量</th>
                     <th>上传时间</th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody>
@@ -217,28 +344,54 @@
         </a>
     </div>
 
+    <!-- 切片预览弹窗 -->
+    <div class="preview-modal" id="previewModal">
+        <div class="preview-content">
+            <div class="preview-header">
+                <h3>文档切片预览 - <span id="previewFilename"></span></h3>
+                <button class="close-btn" onclick="closePreview()">×</button>
+            </div>
+            <div class="preview-body">
+                <div class="preview-stats" id="previewStats"></div>
+                <div id="previewChunks"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const fileInput = document.getElementById('fileInput');
         const statusDiv = document.getElementById('status');
         const docListBody = document.querySelector('#docList tbody');
         const uploadSection = document.querySelector('.upload-section');
+        const previewModal = document.getElementById('previewModal');
+        const previewFilename = document.getElementById('previewFilename');
+        const previewStats = document.getElementById('previewStats');
+        const previewChunks = document.getElementById('previewChunks');
 
         // 加载文档列表
         async function loadDocuments() {
             try {
                 const response = await fetch('/ai/documents');
                 const documents = await response.json();
-                
+
                 docListBody.innerHTML = documents.map(doc => `
                     <tr>
                         <td>${doc.filename || '未知文件'}</td>
                         <td>${doc.chunk_count}</td>
                         <td>${new Date(parseInt(doc.upload_time)).toLocaleString()}</td>
+                        <td class="action-cell">
+                            <button class="preview-btn" onclick="showPreview('${doc.filename}')">
+                                <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: currentColor;">
+                                    <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                                </svg>
+                                预览
+                            </button>
+                        </td>
                     </tr>
                 `).join('');
-                
+
                 if (documents.length === 0) {
-                    docListBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#a0aec0;">暂无文档</td></tr>';
+                    docListBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#a0aec0;">暂无文档</td></tr>';
                 }
             } catch (error) {
                 console.error('加载文档列表失败', error);
@@ -247,6 +400,42 @@
 
         // 页面加载时获取列表
         loadDocuments();
+
+        // 显示切片预览
+        async function showPreview(filename) {
+            previewFilename.textContent = filename;
+            previewStats.textContent = '正在加载切片预览...';
+            previewChunks.innerHTML = '';
+            previewModal.classList.add('active');
+
+            // 这里只是演示，实际需要后端提供预览接口
+            // 由于已有上传后的数据，这里显示提示信息
+            previewStats.innerHTML = '<strong>提示：</strong>切片预览功能需要在上传新文件时使用。已上传的文档请查看日志获取详细切片信息。';
+            previewChunks.innerHTML = `
+                <div class="chunk-item">
+                    <div class="chunk-header">
+                        <span>💡 使用说明</span>
+                    </div>
+                    <div class="chunk-content">
+                        1. 上传新文件时，系统会自动显示切片预览<br>
+                        2. 上传完成后，可在服务器日志中查看详细的切片统计信息<br>
+                        3. 日志包含：平均切片大小、最小/最大切片数、重叠率等指标
+                    </div>
+                </div>
+            `;
+        }
+
+        // 关闭预览
+        function closePreview() {
+            previewModal.classList.remove('active');
+        }
+
+        // 点击弹窗外部关闭
+        previewModal.addEventListener('click', (e) => {
+            if (e.target === previewModal) {
+                closePreview();
+            }
+        });
 
         // 统一处理文件上传逻辑
         async function handleFileUpload(file) {
@@ -259,13 +448,29 @@
             statusDiv.className = 'loading';
 
             try {
+                // 先预览切片
+                const previewResponse = await fetch('/ai/preview-chunks', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (previewResponse.ok) {
+                    const chunks = await previewResponse.json();
+                    if (chunks.error) {
+                        throw new Error(chunks.error);
+                    }
+                    // 显示预览弹窗
+                    showUploadPreview(file.name, chunks);
+                }
+
+                // 然后正式上传
                 const response = await fetch('/ai/upload', {
                     method: 'POST',
                     body: formData
                 });
 
                 const result = await response.text();
-                
+
                 if (response.ok) {
                     statusDiv.textContent = '✅ ' + result;
                     statusDiv.className = 'success';
@@ -278,6 +483,45 @@
                 statusDiv.textContent = '❌ ' + error.message;
                 statusDiv.className = 'error';
             }
+        }
+
+        // 显示上传预览
+        function showUploadPreview(filename, chunks) {
+            previewFilename.textContent = filename;
+            
+            // 统计信息
+            const totalChunks = chunks.length;
+            const avgLength = Math.round(chunks.reduce((sum, c) => sum + c.length, 0) / totalChunks);
+            const minLength = Math.min(...chunks.map(c => c.length));
+            const maxLength = Math.max(...chunks.map(c => c.length));
+            
+            previewStats.innerHTML = `
+                <strong>切片统计：</strong> 
+                共 ${totalChunks} 个片段 | 
+                平均长度：${avgLength} 字符 | 
+                最小：${minLength} | 
+                最大：${maxLength}
+            `;
+
+            // 渲染切片列表
+            previewChunks.innerHTML = chunks.map(chunk => `
+                <div class="chunk-item">
+                    <div class="chunk-header">
+                        <span>片段 #${chunk.index + 1}</span>
+                        <span>${chunk.length} 字符</span>
+                    </div>
+                    <div class="chunk-content">${escapeHtml(chunk.content)}</div>
+                </div>
+            `).join('');
+
+            previewModal.classList.add('active');
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // 点击上传处理
@@ -328,7 +572,7 @@
         uploadSection.addEventListener('drop', async (e) => {
             const dt = e.dataTransfer;
             const files = dt.files;
-            
+
             if (files.length > 0) {
                 await handleFileUpload(files[0]);
             }

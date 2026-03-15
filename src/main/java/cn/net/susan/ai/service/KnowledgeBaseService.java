@@ -5,7 +5,6 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.core.io.Resource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -14,9 +13,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 知识库服务
@@ -30,10 +29,12 @@ public class KnowledgeBaseService {
 
     private final VectorStore vectorStore;
     private final JdbcTemplate jdbcTemplate;
+    private final TokenTextSplitter tokenTextSplitter;
 
-    public KnowledgeBaseService(VectorStore vectorStore, JdbcTemplate jdbcTemplate) {
+    public KnowledgeBaseService(VectorStore vectorStore, JdbcTemplate jdbcTemplate, TokenTextSplitter tokenTextSplitter) {
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
+        this.tokenTextSplitter = tokenTextSplitter;
     }
 
     /**
@@ -52,29 +53,83 @@ public class KnowledgeBaseService {
             TikaDocumentReader reader = new TikaDocumentReader(new org.springframework.core.io.FileSystemResource(tempFile));
             List<Document> documents = reader.read();
 
-            // 3. 文本切分 (Splitter)
-            TokenTextSplitter splitter = new TokenTextSplitter();
-            List<Document> splitDocuments = splitter.apply(documents);
+            // 统计原始文档信息
+            int originalDocCount = documents.size();
+            int totalOriginalChars = documents.stream()
+                    .mapToInt(doc -> doc.getContent().length())
+                    .sum();
+            log.info("文档解析完成：{} 个文档，总字符数：{}", originalDocCount, totalOriginalChars);
 
-            // 4. 添加元数据 (可选)
-            for (Document doc : splitDocuments) {
+            // 3. 文本切分 (Splitter)
+            List<Document> splitDocuments = tokenTextSplitter.apply(documents);
+
+            // 4. 添加元数据
+            for (int i = 0; i < splitDocuments.size(); i++) {
+                Document doc = splitDocuments.get(i);
                 doc.getMetadata().put("filename", file.getOriginalFilename());
                 doc.getMetadata().put("uploadTime", System.currentTimeMillis());
+                // 添加切片索引，方便追踪
+                doc.getMetadata().put("chunkIndex", i);
+                doc.getMetadata().put("totalChunks", splitDocuments.size());
             }
 
-            // 5. 存入向量数据库
+            // 5. 统计切片信息
+            Map<String, Object> stats = analyzeChunks(splitDocuments, totalOriginalChars);
+            log.info("文档切片统计：{}", stats);
+
+            // 6. 存入向量数据库
             vectorStore.add(splitDocuments);
 
-            // 6. 清理临时文件
+            // 7. 清理临时文件
             Files.deleteIfExists(tempFile);
 
-            log.info("成功处理文档: {}, 生成片段数: {}", file.getOriginalFilename(), splitDocuments.size());
-            return "文档上传并处理成功，共生成 " + splitDocuments.size() + " 个片段";
+            log.info("成功处理文档：{}, 生成片段数：{}", file.getOriginalFilename(), splitDocuments.size());
+            return String.format("文档上传并处理成功，共生成 %d 个片段 (平均每个片段 %d 字符，重叠率 %.1f%%)",
+                    splitDocuments.size(),
+                    stats.get("avgChunkSize"),
+                    stats.get("overlapRatio"));
 
         } catch (IOException e) {
             log.error("文档处理失败", e);
-            throw new RuntimeException("文档处理失败: " + e.getMessage());
+            throw new RuntimeException("文档处理失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * 分析切片统计信息
+     */
+    private Map<String, Object> analyzeChunks(List<Document> chunks, int totalOriginalChars) {
+        Map<String, Object> stats = new HashMap<>();
+
+        if (chunks.isEmpty()) {
+            stats.put("avgChunkSize", 0);
+            stats.put("minChunkSize", 0);
+            stats.put("maxChunkSize", 0);
+            stats.put("overlapRatio", 0.0);
+            return stats;
+        }
+
+        // 计算每个片段的大小
+        List<Integer> chunkSizes = chunks.stream()
+                .map(doc -> doc.getContent().length())
+                .toList();
+
+        int avgSize = chunkSizes.stream().mapToInt(Integer::intValue).sum() / chunkSizes.size();
+        int minSize = chunkSizes.stream().min(Integer::compareTo).orElse(0);
+        int maxSize = chunkSizes.stream().max(Integer::compareTo).orElse(0);
+
+        // 计算重叠率 (总片段字符数 / 原始字符数 - 1)
+        int totalChunkChars = chunkSizes.stream().mapToInt(Integer::intValue).sum();
+        double overlapRatio = totalOriginalChars > 0 ?
+                ((double) totalChunkChars / totalOriginalChars - 1) * 100 : 0;
+
+        stats.put("avgChunkSize", avgSize);
+        stats.put("minChunkSize", minSize);
+        stats.put("maxChunkSize", maxSize);
+        stats.put("overlapRatio", Math.round(overlapRatio * 10.0) / 10.0);
+        stats.put("totalChunkChars", totalChunkChars);
+
+        return stats;
     }
 
     /**
@@ -93,7 +148,7 @@ public class KnowledgeBaseService {
         try {
             return jdbcTemplate.queryForList(sql);
         } catch (Exception e) {
-            log.warn("查询文档列表失败，可能是表不存在: {}", e.getMessage());
+            log.warn("查询文档列表失败，可能是表不存在：{}", e.getMessage());
             return List.of();
         }
     }

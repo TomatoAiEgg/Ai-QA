@@ -1,6 +1,5 @@
 package cn.net.susan.ai.service;
 
-import cn.net.susan.ai.integration.OllamaIntegration;
 import cn.net.susan.ai.integration.QwenIntegration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,52 +26,25 @@ import java.util.UUID;
 public class AiService {
 
     private final ChatClient chatClient;
-    private final OllamaIntegration ollamaIntegration;
     private final QwenIntegration qwenIntegration;
     private final VectorStore vectorStore;
     private final ConversationService conversationService;
 
-    // RAG 提示词模板
-    private static final String RAG_SYSTEM_PROMPT = """
-            你是一个智能助手，请根据用户提供的上下文信息回答问题。
-            如果不确定或上下文不包含相关信息，请直接回答不知道，不要编造内容。
-            """;
+    private static final String RAG_SYSTEM_PROMPT = "你是一个智能助手，请根据用户提供的上下文信息回答问题。如果不确定或上下文不包含相关信息，请直接回答不知道，不要编造内容。";
 
-    private static final String RAG_USER_PROMPT_TEMPLATE = """
-            【历史对话】：
-            %s
-            
-            【上下文信息】：
-            %s
-            
-            【用户问题】：
-            %s
-            """;
-    private static final String NORMAL_SYSTEM_PROMPT = """
-            你是一名专业的智能助手，请基于上下文对话历史，准确、简洁地回答用户问题。
-            如果你不确定答案，请直接说明不知道。
-            """;
+    private static final String NORMAL_SYSTEM_PROMPT = "你是一名专业的智能助手，请基于上下文对话历史，准确、简洁地回答用户问题。如果你不确定答案，请直接说明不知道。";
 
     public AiService(ChatClient.Builder chatClientBuilder,
-                     OllamaIntegration ollamaIntegration,
                      QwenIntegration qwenIntegration,
                      ChatMemory chatMemory,
                      VectorStore vectorStore,
                      ConversationService conversationService) {
-        this.ollamaIntegration = ollamaIntegration;
         this.qwenIntegration = qwenIntegration;
         this.vectorStore = vectorStore;
         this.conversationService = conversationService;
-        this.chatClient = chatClientBuilder
-                .build();
+        this.chatClient = chatClientBuilder.build();
     }
 
-    /**
-     * RAG 对话接口
-     *
-     * @param question 提示词
-     * @return 流式返回的字符串
-     */
     public Flux<String> chatByRag(String question) {
         return chatByRag(question, null);
     }
@@ -81,19 +53,59 @@ public class AiService {
         return chatByRag(question, conversationId, "qwen");
     }
 
+    /**
+     * RAG 对话接口 - 带知识库增强的 AI 对话
+     * 
+     * 【执行流程】
+     * 1. 保存用户问题到数据库
+     * 2. 向量检索：将问题转换为向量，在知识库中查找相似文档
+     * 3. 如果有相关文档：构建包含文档内容的提示词，调用千问 API
+     * 4. 如果没有相关文档：返回默认回复
+     * 5. 流式返回 AI 回复给前端，同时保存完整回复到数据库
+     *
+     * @param question       用户问题
+     * @param conversationId 对话 ID（可选，用于保存对话历史）
+     * @param model          模型名称（当前固定使用 qwen）
+     * @return 流式响应 Flux<String>
+     */
     public Flux<String> chatByRag(String question, UUID conversationId, String model) {
-        // 1. 记录用户问题
-        log.info("收到 RAG 对话请求，问题: {}, model: {}", question, model);
+        // ========== 步骤 1: 记录请求日志 ==========
+        log.info("收到 RAG 对话请求，问题：{}, model: {}", question, model);
 
+        // ========== 步骤 2: 保存用户问题到数据库 ==========
+        // 将用户的问题保存到 conversation_messages 表中，角色为"USER"
+        // 这样后续可以查看历史对话记录
         if (conversationId != null) {
             conversationService.addUserMessage(conversationId, question);
         }
 
-        // 2. 检索向量数据库，增加相似度阈值
+        // ========== 步骤 3: 向量检索（RAG 核心步骤）==========
+        // 工作原理：
+        // 1. 调用千问 Embedding API 将问题文本转换为 768 维向量
+        // 2. 在 pgvector 的 vector_store_768 表中执行向量相似度搜索
+        // 3. 使用 HNSW 索引加速搜索，SQL 类似：
+        //    SELECT * FROM vector_store_768 
+        //    ORDER BY embedding <-> ?::vector 
+        //    LIMIT 5
+        // 4. 过滤掉相似度 < 0.6 的文档片段
+        //
+        // 参数说明：
+        // - query(question): 要检索的问题文本
+        // - topK(5): 返回最相关的 5 个文档片段
+        // - similarityThreshold(0.6): 相似度阈值 60%，低于此值的文档会被过滤
+        //
+        // 返回的 Document 包含：
+        // - content: 文档片段内容
+        // - metadata: 元数据（如文件名、页码等）
         List<Document> documents = vectorStore.similaritySearch(
-                SearchRequest.query(question).withTopK(5).withSimilarityThreshold(0.6));
-        
-        // 3. 记录检索到的文档信息
+                SearchRequest.builder()
+                        .query(question)
+                        .topK(5)
+                        .similarityThreshold(0.6)
+                        .build());
+
+        // ========== 步骤 4: 判断检索结果 ==========
+        // 如果没有找到相关文档，直接返回默认回复
         if (documents.isEmpty()) {
             log.info("未检索到相关文档片段，直接回答不知道");
             String fallback = "抱歉，知识库中没有找到相关信息。";
@@ -103,61 +115,77 @@ public class AiService {
             return Flux.just(fallback);
         }
 
+        // ========== 步骤 5: 打印检索到的文档信息（用于调试）==========
+        // 遍历所有检索到的文档片段，记录到日志中
+        // 方便排查问题，查看检索到了什么内容
         log.info("检索到 {} 个相关文档片段:", documents.size());
         for (int i = 0; i < documents.size(); i++) {
             Document doc = documents.get(i);
+            // 从元数据中获取文件名，如果没有则显示"unknown"
             String filename = (String) doc.getMetadata().getOrDefault("filename", "unknown");
-            String contentSnippet = doc.getContent().length() > 100 ? 
+            // 只显示前 100 个字符，避免日志过长
+            String contentSnippet = doc.getContent().length() > 100 ?
                     doc.getContent().substring(0, 100) + "..." : doc.getContent();
             log.info("片段 {}: filename={}, content={}", i + 1, filename, contentSnippet);
         }
 
+        // ========== 步骤 6: 获取历史对话记录 ==========
+        // 获取最近 20 条对话历史，用于保持对话的上下文连贯性
+        // 格式化为："用户：问题 1\n助手：回答 1\n用户：问题 2\n助手：回答 2"
         String history = "";
         if (conversationId != null) {
             history = conversationService.listRecentMessages(conversationId, 20).stream()
-                    .map(m -> (m.role().equalsIgnoreCase("USER") ? "用户" : "助手") + "：" + m.content())
+                    .map(m -> (m.role().equalsIgnoreCase("USER") ? "用户" : "助手") + ": " + m.content())
                     .collect(Collectors.joining("\n"));
         }
 
-        // 4. 构建上下文
+        // ========== 步骤 7: 拼接检索到的文档内容 ==========
+        // 将所有检索到的文档片段内容用两个换行符连接起来
+        // 形成完整的上下文信息，供 AI 模型参考
         String context = documents.stream()
                 .map(Document::getContent)
                 .collect(Collectors.joining("\n\n"));
 
-        // 5. 构建用户提示词
-        String userPrompt = String.format(RAG_USER_PROMPT_TEMPLATE, history, context, question);
+        // ========== 步骤 8: 构建完整的提示词 ==========
+        // 最终发送给千问 API 的提示词包含四部分：
+        // 1. 系统提示：定义 AI 的角色和行为规范
+        // 2. 历史对话：之前的对话记录
+        // 3. 上下文信息：从知识库检索到的相关文档
+        // 4. 用户问题：当前要回答的问题
+        String userPrompt = "【历史对话】:\n" + history + "\n\n【上下文信息】:\n" + context + "\n\n【用户问题】:\n" + question;
         log.info("构造的 RAG 用户提示词:\n{}", userPrompt);
 
-        // 6. 调用大模型
+        // ========== 步骤 9: 调用千问 API（流式响应）==========
+        // 使用 StringBuilder 累积完整的 AI 回复
+        // 原因：流式响应是逐字返回的，需要累积后才能保存完整回复到数据库
         StringBuilder responseBuilder = new StringBuilder();
+        
+        // 组合系统提示和用户提示词
         String composed = RAG_SYSTEM_PROMPT + "\n\n" + userPrompt;
-        return streamByModel(model, composed)
-                .doOnNext(responseFragment -> responseBuilder.append(responseFragment))
+        
+        // 调用千问集成服务，获取流式响应
+        // qwenIntegration.chatByStream() 返回 Flux<ChatResponse>
+        Flux<String> fluxResult = qwenIntegration.chatByStream(composed)
+                // 从 ChatResponse 中提取文本内容
+                // ChatResponse.getResult().getOutput().getText() 获取实际文本
+                .flatMap(r -> Flux.just(extractText(r)))
+                // 每收到一个文本片段，就追加到 responseBuilder 中
+                .doOnNext(responseBuilder::append)
+                // 当流式响应完成时，执行后续操作
                 .doOnComplete(() -> {
-                    log.info("RAG 对话响应完成，完整回复内容: {}", responseBuilder.toString());
+                    // 记录完整回复内容的日志
+                    log.info("RAG 对话响应完成，完整回复内容：{}", responseBuilder.toString());
+                    // 将 AI 的完整回复保存到数据库，角色为"ASSISTANT"
                     if (conversationId != null) {
                         conversationService.addAssistantMessage(conversationId, responseBuilder.toString());
                     }
                 });
+        
+        // ========== 步骤 10: 返回流式响应给前端 ==========
+        // 前端会逐字接收文本，实现打字机效果
+        return fluxResult;
     }
 
-
-    /**
-     * 对话接口
-     *
-     * @param question 提示词
-     * @return 字符串
-     */
-    public String chatByOllama(String question) {
-        return ollamaIntegration.chat(question);
-    }
-
-    /**
-     * 对话接口，流式返回字符串
-     *
-     * @param question 提示词
-     * @return 流式返回的字符串
-     */
     public Flux<String> chatByStream(String question) {
         return chatByStream(question, null);
     }
@@ -167,7 +195,7 @@ public class AiService {
     }
 
     public Flux<String> chatByStream(String question, UUID conversationId, String model) {
-        log.info("收到普通 AI 对话请求，问题: {}, model: {}", question, model);
+        log.info("收到普通 AI 对话请求，问题：{}, model: {}", question, model);
         StringBuilder fullReply = new StringBuilder();
         if (conversationId != null) {
             conversationService.addUserMessage(conversationId, question);
@@ -176,18 +204,16 @@ public class AiService {
         String history = "";
         if (conversationId != null) {
             history = conversationService.listRecentMessages(conversationId, 20).stream()
-                    .map(m -> (m.role().equalsIgnoreCase("USER") ? "用户" : "助手") + "：" + m.content())
+                    .map(m -> (m.role().equalsIgnoreCase("USER") ? "用户" : "助手") + ": " + m.content())
                     .collect(Collectors.joining("\n"));
         }
-        String composed = NORMAL_SYSTEM_PROMPT + "\n\n" +
-                "【历史对话】\n" + history + "\n\n" +
-                "【用户问题】\n" + question;
+        String composed = NORMAL_SYSTEM_PROMPT + "\n\n【历史对话】\n" + history + "\n\n【用户问题】\n" + question;
 
-        Flux<String> fluxResult = streamByModel(model, composed)
+        Flux<String> fluxResult = qwenIntegration.chatByStream(composed)
+                .flatMap(r -> Flux.just(extractText(r)))
                 .doOnNext(fullReply::append)
                 .doOnComplete(() -> {
-                    //监听流式响应完成，完整回复存入消息记录
-                    log.info("普通 AI 对话响应完成，完整回复内容: {}", fullReply);
+                    log.info("普通 AI 对话响应完成，完整回复内容：{}", fullReply);
                     if (conversationId != null) {
                         conversationService.addAssistantMessage(conversationId, fullReply.toString());
                     }
@@ -196,35 +222,13 @@ public class AiService {
         return fluxResult;
     }
 
-    private Flux<String> streamByModel(String model, String promptText) {
-        String requested = (model == null || model.isBlank()) ? "qwen" : model.toLowerCase();
-        if ("qwen".equals(requested)) {
-            if (qwenIntegration.isEnabled()) {
-                log.info("请求大模型：provider=qwen, model={}", qwenIntegration.getConfiguredModelName());
-                return qwenIntegration.chatByStream(promptText).flatMap(r -> Flux.just(extractText(r)));
-            }
-            log.warn("请求大模型：provider=qwen 未启用，降级到 provider=ollama, model={}", ollamaIntegration.getConfiguredModelName());
-            return ollamaIntegration.chatByStream(promptText).flatMap(r -> Flux.just(extractText(r)));
-        }
-
-        if ("ollama".equals(requested)) {
-            log.info("请求大模型：provider=ollama, model={}", ollamaIntegration.getConfiguredModelName());
-            return ollamaIntegration.chatByStream(promptText).flatMap(r -> Flux.just(extractText(r)));
-        }
-
-        if (qwenIntegration.isEnabled()) {
-            log.info("请求大模型：provider=qwen, model={}", qwenIntegration.getConfiguredModelName());
-            return qwenIntegration.chatByStream(promptText).flatMap(r -> Flux.just(extractText(r)));
-        }
-        log.info("请求大模型：provider=ollama, model={}", ollamaIntegration.getConfiguredModelName());
-        return ollamaIntegration.chatByStream(promptText).flatMap(r -> Flux.just(extractText(r)));
-    }
-
     private String extractText(ChatResponse response) {
         if (response == null || response.getResult() == null || response.getResult().getOutput() == null
                 || response.getResult().getOutput().getText() == null) {
             return "";
         }
-        return response.getResult().getOutput().getText();
+        String text = response.getResult().getOutput().getText();
+        log.debug("extractText: {}", text);
+        return text;
     }
 }

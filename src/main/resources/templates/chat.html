@@ -784,7 +784,6 @@
             <div class="select-wrapper">
                 <select id="modelSelect" class="select">
                     <option value="qwen">千问（默认）</option>
-                    <option value="ollama">Ollama（本地）</option>
                 </select>
             </div>
         </div>
@@ -807,7 +806,6 @@
     const sendButton = document.getElementById('sendButton');
     const chatMessages = document.getElementById('chatMessages');
     const ragSwitch = document.getElementById('ragSwitch');
-    const modelSelect = document.getElementById('modelSelect');
     const newConversationBtn = document.getElementById('newConversationBtn');
     const conversationList = document.getElementById('conversationList');
     const sidebar = document.querySelector('.sidebar');
@@ -822,13 +820,6 @@
     });
     let isBotResponding = false;
     let selectedConversationId = null;
-    let selectedModel = 'qwen';
-
-    const storedModel = localStorage.getItem('selectedModel');
-    if (storedModel) {
-        selectedModel = storedModel;
-        modelSelect.value = storedModel;
-    }
 
     // 输入验证
     questionInput.addEventListener('input', () => {
@@ -846,6 +837,10 @@
     let currentBotMessage = null; // 当前正在更新的AI消息
 
     async function handleBotResponse(response) {
+        console.log('[DEBUG] 收到响应:', response);
+        console.log('[DEBUG] 响应状态:', response.status);
+        console.log('[DEBUG] 响应头:', response.headers.get('content-type'));
+        
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -853,11 +848,13 @@
         currentBotMessage = displayMessage('bot', '', new Date());
         const contentEl = currentBotMessage.querySelector('.md-content');
         let raw = '';
+        let chunkCount = 0;
 
         try {
             while (true) {
                 const {done, value} = await reader.read();
                 if (done) {
+                    console.log('[DEBUG] 读取完成，buffer:', buffer);
                     if (buffer) {
                         const data = buffer.trim();
                         if (data.startsWith('data:')) {
@@ -871,7 +868,11 @@
                     break;
                 }
 
-                buffer += decoder.decode(value, {stream: true});
+                const text = decoder.decode(value, {stream: true});
+                console.log('[DEBUG] 收到数据块:', text);
+                chunkCount++;
+                
+                buffer += text;
                 const lines = buffer.split('\n');
 
                 buffer = lines.pop() || '';
@@ -880,6 +881,7 @@
                     if (line.startsWith('data:')) {
                         const data = line.replace(/^data:\s*/g, '').trim();
                         if (data === '[DONE]') return;
+                        console.log('[DEBUG] 解析数据:', data);
                         raw += data;
                         renderMarkdown(contentEl, raw);
                     }
@@ -887,6 +889,10 @@
 
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
+            console.log('[DEBUG] 总共收到', chunkCount, '个数据块');
+        } catch (err) {
+            console.error('[DEBUG] 读取错误:', err);
+            throw err;
         } finally {
             currentBotMessage = null;
         }
@@ -915,8 +921,8 @@
             const typingIndicator = createTypingIndicator();
 
             // 根据开关状态选择 API 接口
-            const apiEndpoint = ragSwitch.checked ? '/ai/chatByRag' : '/ai/chatByOllama';
-            const url = `${apiEndpoint}?conversationId=${encodeURIComponent(selectedConversationId)}&model=${encodeURIComponent(selectedModel)}`;
+            const apiEndpoint = ragSwitch.checked ? '/ai/chatByRag' : '/ai/chat';
+            const url = `${apiEndpoint}?conversationId=${encodeURIComponent(selectedConversationId)}`;
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -981,12 +987,6 @@
         });
     }
 
-
-    modelSelect.addEventListener('change', async (e) => {
-        selectedModel = e.target.value;
-        localStorage.setItem('selectedModel', selectedModel);
-        questionInput.focus();
-    });
 
     newConversationBtn.addEventListener('click', async () => {
         await createConversation();
@@ -1241,13 +1241,15 @@
     }
 
     function renderMarkdown(el, raw) {
+        console.log('[DEBUG] renderMarkdown 调用，el:', el, 'raw:', raw);
         el.dataset.raw = raw;
         const html = DOMPurify.sanitize(marked.parse(raw || ''));
+        console.log('[DEBUG] renderMarkdown 渲染的 HTML:', html);
         el.innerHTML = html;
     }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
 </body>
 
 </html>
