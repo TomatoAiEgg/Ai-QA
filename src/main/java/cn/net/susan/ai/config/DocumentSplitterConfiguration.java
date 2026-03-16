@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
  * @date 2026/3/15
  */
 @Configuration
-@ConfigurationProperties(prefix = "susan.document.splitter")
+@ConfigurationProperties(prefix = "ai.service.document.splitter")
 public class DocumentSplitterConfiguration {
 
     /**
