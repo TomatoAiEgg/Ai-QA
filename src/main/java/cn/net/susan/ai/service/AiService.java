@@ -29,6 +29,7 @@ public class AiService {
     private final QwenIntegration qwenIntegration;
     private final VectorStore vectorStore;
     private final ConversationService conversationService;
+    private final RerankService rerankService;
 
     private static final String RAG_SYSTEM_PROMPT = "你是一个智能助手，请根据用户提供的上下文信息回答问题。如果不确定或上下文不包含相关信息，请直接回答不知道，不要编造内容。";
 
@@ -38,10 +39,12 @@ public class AiService {
                      QwenIntegration qwenIntegration,
                      ChatMemory chatMemory,
                      VectorStore vectorStore,
-                     ConversationService conversationService) {
+                     ConversationService conversationService,
+                     RerankService rerankService) {
         this.qwenIntegration = qwenIntegration;
         this.vectorStore = vectorStore;
         this.conversationService = conversationService;
+        this.rerankService = rerankService;
         this.chatClient = chatClientBuilder.build();
     }
 
@@ -113,6 +116,33 @@ public class AiService {
                 conversationService.addAssistantMessage(conversationId, fallback);
             }
             return Flux.just(fallback);
+        }
+
+        // ========== 步骤 4.5: Rerank 重排序（新增）==========
+        // 使用 Rerank 模型对检索结果进行重排序，提高相关性
+        // 工作原理：
+        // 1. 将查询问题和检索到的文档一起发送给 Rerank 模型
+        // 2. Rerank 模型为每个文档计算相关性分数
+        // 3. 按分数降序排序，过滤低分文档
+        // 4. 返回 Top-N 最相关的文档
+        //
+        // 优势：
+        // - 向量检索只考虑语义相似度，可能忽略关键词匹配
+        // - Rerank 模型可以更精确地判断文档与问题的相关性
+        // - 通常能提升 10-30% 的检索准确率
+        if (rerankService.isEnabled()) {
+            log.info("开始 Rerank 重排序...");
+            documents = rerankService.rerank(question, documents);
+            
+            // Rerank 后如果没有文档，返回默认回复
+            if (documents.isEmpty()) {
+                log.info("Rerank 后没有符合条件的文档，返回默认回复");
+                String fallback = "抱歉，知识库中没有找到与您的问题高度相关的信息。";
+                if (conversationId != null) {
+                    conversationService.addAssistantMessage(conversationId, fallback);
+                }
+                return Flux.just(fallback);
+            }
         }
 
         // ========== 步骤 5: 打印检索到的文档信息（用于调试）==========

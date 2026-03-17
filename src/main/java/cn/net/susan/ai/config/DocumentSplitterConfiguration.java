@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
  * 文档切片器配置
  * 用于配置 RAG 中文档切片的策略和参数
  *
- * @author 苏三
+ * @author TomatoEgg
  * @date 2026/3/15
  */
 @Configuration
