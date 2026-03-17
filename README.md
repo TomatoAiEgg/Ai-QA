@@ -1,4 +1,4 @@
-# AI-Service 项目入门指南
+# AI-QA 项目入门指南
 
 **版本**: v1.0.2
 **最后更新**: 2026-03-15
@@ -7,7 +7,7 @@
 
 ## 一、项目简介
 
-AI-Service 是一个基于 **Spring AI** 的智能问答系统，支持：
+AI-QA 是一个基于 **Spring AI** 的智能问答系统，支持：
 
 - ✅ AI 对话（千问大模型）
 - ✅ RAG 知识库增强（文档上传、向量检索）
@@ -101,7 +101,7 @@ mvn spring-boot:run
 ## 四、项目结构详解
 
 ```
-AI-service/
+AI-QA/
 ├── src/
 │   ├── main/
 │   │   ├── java/cn/net/susan/ai/

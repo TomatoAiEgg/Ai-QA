@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.tomatoegg</groupId>
-    <artifactId>ai-service</artifactId>
+    <artifactId>AI-QA</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ai-service</name>
-    <description>AI Service - Intelligent QA Assistant with RAG</description>
+    <name>AI-QA</name>
+    <description>AI-QA - Intelligent QA Assistant with RAG</description>
     <url/>
     <licenses>
         <license/>
@@ -23,9 +23,9 @@
         </developer>
     </developers>
     <scm>
-        <connection>scm:git:https://github.com/TomatoEgg/AI-service.git</connection>
-        <developerConnection>scm:git:git@github.com:TomatoEgg/AI-service.git</developerConnection>
-        <url>https://github.com/TomatoEgg/AI-service</url>
+        <connection>scm:git:https://github.com/TomatoAiEgg/AI-QA.git</connection>
+        <developerConnection>scm:git:git@github.com:TomatoAiEgg/AI-QA.git</developerConnection>
+        <url>https://github.com/TomatoAiEgg/AI-QA</url>
     </scm>
     <properties>
         <java.version>17</java.version>
