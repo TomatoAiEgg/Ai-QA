@@ -95,11 +95,13 @@ public class AiController {
      * 上传文档到知识库
      *
      * @param file 文件
+     * @param kbId 知识库 ID（可选）
      * @return 上传结果
      */
     @PostMapping("/ai/upload")
-    public String upload(@RequestParam("file") MultipartFile file) {
-        return knowledgeBaseService.uploadDocument(file);
+    public String upload(@RequestParam("file") MultipartFile file,
+                         @RequestParam(value = "kbId", required = false) UUID kbId) {
+        return knowledgeBaseService.uploadDocument(file, kbId);
     }
 
     @GetMapping("/ai/documents")

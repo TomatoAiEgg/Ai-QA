@@ -16,6 +16,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 知识库服务
@@ -38,12 +39,13 @@ public class KnowledgeBaseService {
     }
 
     /**
-     * 上传并处理文档
+     * 上传并处理文档到指定知识库
      *
      * @param file 上传的文件
+     * @param kbId 知识库 ID（可选）
      * @return 处理结果
      */
-    public String uploadDocument(MultipartFile file) {
+    public String uploadDocument(MultipartFile file, UUID kbId) {
         try {
             // 1. 保存文件到临时目录
             Path tempFile = Files.createTempFile("kb_", file.getOriginalFilename());
@@ -71,6 +73,10 @@ public class KnowledgeBaseService {
                 // 添加切片索引，方便追踪
                 doc.getMetadata().put("chunkIndex", i);
                 doc.getMetadata().put("totalChunks", splitDocuments.size());
+                // 添加知识库 ID
+                if (kbId != null) {
+                    doc.getMetadata().put("kb_id", kbId.toString());
+                }
             }
 
             // 5. 统计切片信息
@@ -93,6 +99,13 @@ public class KnowledgeBaseService {
             log.error("文档处理失败", e);
             throw new RuntimeException("文档处理失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * 上传并处理文档（默认不指定知识库）
+     */
+    public String uploadDocument(MultipartFile file) {
+        return uploadDocument(file, null);
     }
 
     /**

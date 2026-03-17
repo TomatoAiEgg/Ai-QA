@@ -1243,13 +1243,154 @@
     function renderMarkdown(el, raw) {
         console.log('[DEBUG] renderMarkdown 调用，el:', el, 'raw:', raw);
         el.dataset.raw = raw;
+        
+        // 配置 marked.js 选项
+        marked.setOptions({
+            breaks: true,        // 支持换行
+            gfm: true,          // GitHub 风格 Markdown
+            tables: true,       // 支持表格
+            headerIds: true,    // 支持标题 ID
+            mangle: false,      // 不混淆标题 ID
+        });
+        
         const html = DOMPurify.sanitize(marked.parse(raw || ''));
         console.log('[DEBUG] renderMarkdown 渲染的 HTML:', html);
+        
+        // 使用 markdown-body 类来应用样式
+        el.className = 'markdown-body';
         el.innerHTML = html;
     }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+<!-- GitHub Markdown CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.2.0/github-markdown.min.css">
+<style>
+/* Markdown 样式优化 */
+.markdown-body {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+    line-height: 1.6;
+    color: #24292e;
+    background: transparent;
+    padding: 0;
+}
+
+.markdown-body > *:first-child {
+    margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+    margin-bottom: 0;
+}
+
+/* 表格样式 */
+.markdown-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+    font-size: 14px;
+    display: block;
+    overflow: auto;
+}
+
+.markdown-body th {
+    background-color: #f6f8fa;
+    font-weight: 600;
+    padding: 8px 12px;
+    border: 1px solid #dfe2e5;
+    text-align: left;
+}
+
+.markdown-body td {
+    padding: 8px 12px;
+    border: 1px solid #dfe2e5;
+    text-align: left;
+}
+
+.markdown-body tr:nth-child(2n) {
+    background-color: #f6f8fa;
+}
+
+/* 代码块样式 */
+.markdown-body pre {
+    background-color: #f6f8fa;
+    padding: 16px;
+    border-radius: 6px;
+    overflow: auto;
+    font-size: 85%;
+    line-height: 1.45;
+    margin: 16px 0;
+}
+
+.markdown-body code {
+    background-color: rgba(27,31,35,0.05);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-size: 85%;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.markdown-body pre code {
+    background-color: transparent;
+    padding: 0;
+    font-size: 100%;
+    word-break: normal;
+    white-space: pre;
+}
+
+/* 标题样式 */
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.markdown-body h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+.markdown-body h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+.markdown-body h3 { font-size: 1.25em; }
+
+/* 列表样式 */
+.markdown-body ul, .markdown-body ol {
+    padding-left: 2em;
+    margin: 16px 0;
+}
+
+/* 引用样式 */
+.markdown-body blockquote {
+    margin: 16px 0;
+    padding: 0 1em;
+    color: #6a737d;
+    border-left: 0.25em solid #dfe2e5;
+}
+
+/* 链接样式 */
+.markdown-body a {
+    color: #0366d6;
+    text-decoration: none;
+}
+
+.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+/* 聊天消息中的 Markdown 特殊处理 */
+.chat-message.bot .markdown-body {
+    background: transparent;
+}
+
+.chat-message.bot .markdown-body table {
+    font-size: 13px;
+}
+
+.chat-message.bot .markdown-body th,
+.chat-message.bot .markdown-body td {
+    padding: 6px 10px;
+}
+</style>
 </body>
 
 </html>
