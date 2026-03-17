@@ -29,11 +29,9 @@ public class KnowledgeBaseRepository {
      * 创建知识库
      */
     public KnowledgeBase create(KnowledgeBase kb) {
-        String sql = """
-            INSERT INTO knowledge_bases (id, name, description, cover_color, created_by, is_public)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """;
-        
+        String sql = "INSERT INTO knowledge_bases (id, name, description, cover_color, created_by, is_public) " +
+                     "VALUES (?, ?, ?, ?, ?, ?)";
+
         jdbcTemplate.update(sql,
             kb.getId(),
             kb.getName(),
@@ -42,7 +40,7 @@ public class KnowledgeBaseRepository {
             kb.getCreatedBy(),
             kb.getIsPublic()
         );
-        
+
         return kb;
     }
 
@@ -50,11 +48,9 @@ public class KnowledgeBaseRepository {
      * 获取所有知识库
      */
     public List<KnowledgeBase> findAll() {
-        String sql = """
-            SELECT id, name, description, cover_color, created_by, is_public, created_at, updated_at
-            FROM knowledge_bases
-            ORDER BY created_at DESC
-            """;
+        String sql = "SELECT id, name, description, cover_color, created_by, is_public, created_at, updated_at " +
+                     "FROM knowledge_bases " +
+                     "ORDER BY created_at DESC";
         return jdbcTemplate.query(sql, knowledgeBaseRowMapper);
     }
 
@@ -62,12 +58,10 @@ public class KnowledgeBaseRepository {
      * 根据 ID 获取知识库
      */
     public Optional<KnowledgeBase> findById(UUID id) {
-        String sql = """
-            SELECT id, name, description, cover_color, created_by, is_public, created_at, updated_at
-            FROM knowledge_bases
-            WHERE id = ?
-            """;
-        
+        String sql = "SELECT id, name, description, cover_color, created_by, is_public, created_at, updated_at " +
+                     "FROM knowledge_bases " +
+                     "WHERE id = ?";
+
         try {
             KnowledgeBase kb = jdbcTemplate.queryForObject(sql, knowledgeBaseRowMapper, id);
             return Optional.ofNullable(kb);
@@ -80,11 +74,9 @@ public class KnowledgeBaseRepository {
      * 更新知识库
      */
     public void update(KnowledgeBase kb) {
-        String sql = """
-            UPDATE knowledge_bases
-            SET name = ?, description = ?, cover_color = ?, is_public = ?, updated_at = NOW()
-            WHERE id = ?
-            """;
+        String sql = "UPDATE knowledge_bases " +
+                     "SET name = ?, description = ?, cover_color = ?, is_public = ?, updated_at = NOW() " +
+                     "WHERE id = ?";
         jdbcTemplate.update(sql,
             kb.getName(),
             kb.getDescription(),
