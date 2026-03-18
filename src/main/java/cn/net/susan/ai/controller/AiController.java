@@ -78,16 +78,19 @@ public class AiController {
     }
 
     /**
-     * RAG 对话接口
+     * RAG 对话接口（支持指定知识库）
      *
      * @param question 问题
+     * @param conversationId 对话 ID
+     * @param kbId 知识库 ID（可选）
      * @return 流式回复
      */
     @PostMapping(value = "/ai/chatByRag", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chatByRag(@RequestBody String question,
                                   @RequestParam("conversationId") UUID conversationId,
+                                  @RequestParam(value = "kbId", required = false) UUID kbId,
                                   @RequestParam(value = "model", defaultValue = "qwen") String model) {
-        return aiService.chatByRag(question, conversationId, model)
+        return aiService.chatByRag(question, conversationId, kbId, model)
                 .map(text -> ServerSentEvent.builder(text).build());
     }
 
@@ -105,8 +108,8 @@ public class AiController {
     }
 
     @GetMapping("/ai/documents")
-    public Object getDocuments() {
-        return knowledgeBaseService.getDocumentList();
+    public Object getDocuments(@RequestParam(value = "kbId", required = false) UUID kbId) {
+        return knowledgeBaseService.getDocumentList(kbId);
     }
 
     /**

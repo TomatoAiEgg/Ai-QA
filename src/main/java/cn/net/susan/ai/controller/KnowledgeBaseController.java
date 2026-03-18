@@ -2,6 +2,7 @@ package cn.net.susan.ai.controller;
 
 import cn.net.susan.ai.service.KnowledgeBaseManagementService;
 import cn.net.susan.ai.entity.KnowledgeBase;
+import cn.net.susan.ai.entity.KnowledgeBaseDocument;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -64,5 +65,13 @@ public class KnowledgeBaseController {
     @DeleteMapping("/{id}")
     public void delete(@PathVariable UUID id) {
         kbService.deleteKnowledgeBase(id);
+    }
+
+    /**
+     * 获取知识库下的文档列表
+     */
+    @GetMapping("/{id}/documents")
+    public List<KnowledgeBaseDocument> listDocuments(@PathVariable UUID id) {
+        return kbService.listDocuments(id);
     }
 }

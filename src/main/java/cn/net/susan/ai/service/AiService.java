@@ -30,6 +30,7 @@ public class AiService {
     private final VectorStore vectorStore;
     private final ConversationService conversationService;
     private final RerankService rerankService;
+    private final KnowledgeBaseService knowledgeBaseService;
 
     private static final String RAG_SYSTEM_PROMPT = "你是一个智能助手，请根据用户提供的上下文信息回答问题。如果不确定或上下文不包含相关信息，请直接回答不知道，不要编造内容。";
 
@@ -40,72 +41,62 @@ public class AiService {
                      ChatMemory chatMemory,
                      VectorStore vectorStore,
                      ConversationService conversationService,
-                     RerankService rerankService) {
+                     RerankService rerankService,
+                     KnowledgeBaseService knowledgeBaseService) {
         this.qwenIntegration = qwenIntegration;
         this.vectorStore = vectorStore;
         this.conversationService = conversationService;
         this.rerankService = rerankService;
+        this.knowledgeBaseService = knowledgeBaseService;
         this.chatClient = chatClientBuilder.build();
     }
 
     public Flux<String> chatByRag(String question) {
-        return chatByRag(question, null);
+        return chatByRag(question, null, null);
     }
 
     public Flux<String> chatByRag(String question, UUID conversationId) {
-        return chatByRag(question, conversationId, "qwen");
+        return chatByRag(question, conversationId, null);
+    }
+
+    /**
+     * RAG 对话接口 - 带知识库增强的 AI 对话（支持指定知识库）
+     *
+     * @param question       用户问题
+     * @param conversationId 对话 ID（可选）
+     * @param kbId           知识库 ID（可选，为 null 时检索所有知识库）
+     * @return 流式响应 Flux<String>
+     */
+    public Flux<String> chatByRag(String question, UUID conversationId, UUID kbId) {
+        return chatByRag(question, conversationId, kbId, "qwen");
     }
 
     /**
      * RAG 对话接口 - 带知识库增强的 AI 对话
-     * 
+     *
      * 【执行流程】
      * 1. 保存用户问题到数据库
      * 2. 向量检索：将问题转换为向量，在知识库中查找相似文档
-     * 3. 如果有相关文档：构建包含文档内容的提示词，调用千问 API
-     * 4. 如果没有相关文档：返回默认回复
-     * 5. 流式返回 AI 回复给前端，同时保存完整回复到数据库
+     * 3. Rerank 重排序：对检索结果进行重排序，提高相关性
+     * 4. 构建提示词：系统提示 + 历史对话 + 上下文信息 + 用户问题
+     * 5. 调用千问 API（流式响应）
+     * 6. 保存完整回复到数据库
      *
      * @param question       用户问题
-     * @param conversationId 对话 ID（可选，用于保存对话历史）
-     * @param model          模型名称（当前固定使用 qwen）
+     * @param conversationId 对话 ID（可选）
+     * @param kbId           知识库 ID（可选）
+     * @param model          模型名称
      * @return 流式响应 Flux<String>
      */
-    public Flux<String> chatByRag(String question, UUID conversationId, String model) {
-        // ========== 步骤 1: 记录请求日志 ==========
-        log.info("收到 RAG 对话请求，问题：{}, model: {}", question, model);
+    public Flux<String> chatByRag(String question, UUID conversationId, UUID kbId, String model) {
+        log.info("收到 RAG 对话请求，问题：{}, kbId: {}, model: {}", question, kbId, model);
 
-        // ========== 步骤 2: 保存用户问题到数据库 ==========
-        // 将用户的问题保存到 conversation_messages 表中，角色为"USER"
-        // 这样后续可以查看历史对话记录
         if (conversationId != null) {
             conversationService.addUserMessage(conversationId, question);
         }
 
-        // ========== 步骤 3: 向量检索（RAG 核心步骤）==========
-        // 工作原理：
-        // 1. 调用千问 Embedding API 将问题文本转换为 768 维向量
-        // 2. 在 pgvector 的 vector_store_768 表中执行向量相似度搜索
-        // 3. 使用 HNSW 索引加速搜索，SQL 类似：
-        //    SELECT * FROM vector_store_768 
-        //    ORDER BY embedding <-> ?::vector 
-        //    LIMIT 5
-        // 4. 过滤掉相似度 < 0.6 的文档片段
-        //
-        // 参数说明：
-        // - query(question): 要检索的问题文本
-        // - topK(5): 返回最相关的 5 个文档片段
-        // - similarityThreshold(0.6): 相似度阈值 60%，低于此值的文档会被过滤
-        //
-        // 返回的 Document 包含：
-        // - content: 文档片段内容
-        // - metadata: 元数据（如文件名、页码等）
-        List<Document> documents = vectorStore.similaritySearch(
-                SearchRequest.builder()
-                        .query(question)
-                        .topK(5)
-                        .similarityThreshold(0.6)
-                        .build());
+        // 向量检索（支持按知识库过滤）
+        List<Document> documents = knowledgeBaseService.searchFromKnowledgeBase(question, kbId, 5);
 
         // ========== 步骤 4: 判断检索结果 ==========
         // 如果没有找到相关文档，直接返回默认回复

@@ -1,9 +1,12 @@
 package cn.net.susan.ai.service;
 
+import cn.net.susan.ai.entity.KnowledgeBaseDocument;
+import cn.net.susan.ai.repository.KnowledgeBaseDocumentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -13,6 +16,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,11 +35,16 @@ public class KnowledgeBaseService {
     private final VectorStore vectorStore;
     private final JdbcTemplate jdbcTemplate;
     private final TokenTextSplitter tokenTextSplitter;
+    private final KnowledgeBaseDocumentRepository documentRepository;
 
-    public KnowledgeBaseService(VectorStore vectorStore, JdbcTemplate jdbcTemplate, TokenTextSplitter tokenTextSplitter) {
+    public KnowledgeBaseService(VectorStore vectorStore, 
+                                JdbcTemplate jdbcTemplate, 
+                                TokenTextSplitter tokenTextSplitter,
+                                KnowledgeBaseDocumentRepository documentRepository) {
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
         this.tokenTextSplitter = tokenTextSplitter;
+        this.documentRepository = documentRepository;
     }
 
     /**
@@ -46,6 +55,20 @@ public class KnowledgeBaseService {
      * @return 处理结果
      */
     public String uploadDocument(MultipartFile file, UUID kbId) {
+        // 创建文档记录
+        KnowledgeBaseDocument docRecord = KnowledgeBaseDocument.builder()
+                .id(UUID.randomUUID())
+                .kbId(kbId)
+                .filename(file.getOriginalFilename())
+                .fileSize(file.getSize())
+                .fileHash(calculateFileHash(file))
+                .chunkCount(0)
+                .status("PROCESSING")
+                .build();
+
+        documentRepository.create(docRecord);
+        log.info("创建文档记录：{} (kbId: {})", docRecord.getFilename(), kbId);
+
         try {
             // 1. 保存文件到临时目录
             Path tempFile = Files.createTempFile("kb_", file.getOriginalFilename());
@@ -70,13 +93,9 @@ public class KnowledgeBaseService {
                 Document doc = splitDocuments.get(i);
                 doc.getMetadata().put("filename", file.getOriginalFilename());
                 doc.getMetadata().put("uploadTime", System.currentTimeMillis());
-                // 添加切片索引，方便追踪
+                doc.getMetadata().put("kb_id", kbId != null ? kbId.toString() : "default");
                 doc.getMetadata().put("chunkIndex", i);
                 doc.getMetadata().put("totalChunks", splitDocuments.size());
-                // 添加知识库 ID
-                if (kbId != null) {
-                    doc.getMetadata().put("kb_id", kbId.toString());
-                }
             }
 
             // 5. 统计切片信息
@@ -86,7 +105,11 @@ public class KnowledgeBaseService {
             // 6. 存入向量数据库
             vectorStore.add(splitDocuments);
 
-            // 7. 清理临时文件
+            // 7. 更新文档记录
+            documentRepository.updateChunkCount(docRecord.getId(), splitDocuments.size());
+            documentRepository.updateStatus(docRecord.getId(), "COMPLETED", null);
+
+            // 8. 清理临时文件
             Files.deleteIfExists(tempFile);
 
             log.info("成功处理文档：{}, 生成片段数：{}", file.getOriginalFilename(), splitDocuments.size());
@@ -97,6 +120,7 @@ public class KnowledgeBaseService {
 
         } catch (IOException e) {
             log.error("文档处理失败", e);
+            documentRepository.updateStatus(docRecord.getId(), "FAILED", e.getMessage());
             throw new RuntimeException("文档处理失败：" + e.getMessage());
         }
     }
@@ -106,6 +130,56 @@ public class KnowledgeBaseService {
      */
     public String uploadDocument(MultipartFile file) {
         return uploadDocument(file, null);
+    }
+
+    /**
+     * 从指定知识库检索文档
+     *
+     * @param query 查询问题
+     * @param kbId 知识库 ID（可选，为 null 时检索所有知识库）
+     * @param topK 返回文档数量
+     * @return 检索到的文档列表
+     */
+    public List<Document> searchFromKnowledgeBase(String query, UUID kbId, int topK) {
+        SearchRequest request = SearchRequest.builder()
+                .query(query)
+                .topK(topK)
+                .similarityThreshold(0.6)
+                .build();
+
+        return vectorStore.similaritySearch(request);
+    }
+
+    /**
+     * 获取知识库中的文档列表
+     *
+     * @param kbId 知识库 ID（可选）
+     * @return 文档列表
+     */
+    public List<KnowledgeBaseDocument> getDocumentList(UUID kbId) {
+        if (kbId != null) {
+            return documentRepository.findByKbId(kbId);
+        }
+        return documentRepository.findAll();
+    }
+
+    /**
+     * 删除知识库中的文档
+     *
+     * @param docId 文档记录 ID
+     */
+    public void deleteDocument(UUID docId) {
+        KnowledgeBaseDocument doc = documentRepository.findById(docId)
+                .orElseThrow(() -> new RuntimeException("文档记录不存在：" + docId));
+
+        // 从向量库中删除相关片段（通过元数据过滤）
+        // 注意：Spring AI VectorStore 不直接支持删除，需要通过 JdbcTemplate 操作
+        String deleteSql = "DELETE FROM vector_store_1024 WHERE metadata->>'filename' = ?";
+        jdbcTemplate.update(deleteSql, doc.getFilename());
+
+        // 删除文档记录
+        documentRepository.delete(docId);
+        log.info("删除文档：{} (kbId: {})", doc.getFilename(), doc.getKbId());
     }
 
     /**
@@ -122,7 +196,6 @@ public class KnowledgeBaseService {
             return stats;
         }
 
-        // 计算每个片段的大小
         List<Integer> chunkSizes = chunks.stream()
                 .map(doc -> doc.getContent().length())
                 .toList();
@@ -131,7 +204,6 @@ public class KnowledgeBaseService {
         int minSize = chunkSizes.stream().min(Integer::compareTo).orElse(0);
         int maxSize = chunkSizes.stream().max(Integer::compareTo).orElse(0);
 
-        // 计算重叠率 (总片段字符数 / 原始字符数 - 1)
         int totalChunkChars = chunkSizes.stream().mapToInt(Integer::intValue).sum();
         double overlapRatio = totalOriginalChars > 0 ?
                 ((double) totalChunkChars / totalOriginalChars - 1) * 100 : 0;
@@ -146,23 +218,22 @@ public class KnowledgeBaseService {
     }
 
     /**
-     * 获取知识库中的文档列表（基于文件名去重）
-     *
-     * @return 文档列表
+     * 计算文件哈希值（用于去重）
      */
-    public List<Map<String, Object>> getDocumentList() {
-        String sql = "SELECT metadata->>'filename' as filename, " +
-                "COUNT(*) as chunk_count, " +
-                "MIN(metadata->>'uploadTime') as upload_time " +
-                "FROM vector_store_768 " +
-                "GROUP BY metadata->>'filename' " +
-                "ORDER BY upload_time DESC";
-
+    private String calculateFileHash(MultipartFile file) {
         try {
-            return jdbcTemplate.queryForList(sql);
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(file.getBytes());
+            StringBuilder hexString = new StringBuilder(2 * hash.length);
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
         } catch (Exception e) {
-            log.warn("查询文档列表失败，可能是表不存在：{}", e.getMessage());
-            return List.of();
+            log.warn("计算文件哈希失败", e);
+            return null;
         }
     }
 }
