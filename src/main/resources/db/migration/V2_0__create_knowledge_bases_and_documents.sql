@@ -38,7 +38,7 @@ COMMENT ON COLUMN knowledge_bases.is_public IS '是否公开';
 -- 4. 创建知识库文档关联表
 CREATE TABLE IF NOT EXISTS knowledge_base_documents (
     id UUID PRIMARY KEY,
-    kb_id UUID NOT NULL,
+    kb_id UUID,
     filename VARCHAR(255) NOT NULL,
     file_hash VARCHAR(64),
     file_size BIGINT,
