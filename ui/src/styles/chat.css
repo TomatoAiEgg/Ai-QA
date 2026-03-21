@@ -167,7 +167,7 @@
 }
 
 /* 代码块 */
-.md-content pre {
+.md-content pre.hljs {
   background: #282c34;
   border-radius: 8px;
   padding: 16px;
@@ -175,10 +175,13 @@
   margin: 12px 0;
 }
 
-.md-content pre code {
+.md-content pre.hljs code {
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.85rem;
   line-height: 1.5;
+  background: transparent;
+  padding: 0;
+  color: inherit;
 }
 
 /* 行内代码 */
@@ -191,6 +194,7 @@
   font-size: 0.85em;
 }
 
+/* 防止 pre 内的 code 被行内代码样式覆盖 */
 .md-content pre :deep(code) {
   background: transparent;
   padding: 0;

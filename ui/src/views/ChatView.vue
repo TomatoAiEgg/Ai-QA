@@ -127,12 +127,19 @@ const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
-  breaks: true,
+  breaks: false,
+  langPrefix: 'language-',
   highlight: (code, lang) => {
     if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value
+      try {
+        return '<pre class="hljs"><code>' +
+               hljs.highlight(code, { language: lang }).value +
+               '</code></pre>'
+      } catch (e) {
+        console.error('Highlight error:', e)
+      }
     }
-    return hljs.highlightAuto(code).value
+    return '<pre class="hljs"><code>' + md.utils.escapeHtml(code) + '</code></pre>'
   }
 })
 md.use(markdownItHighlightjs)
