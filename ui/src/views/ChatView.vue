@@ -126,12 +126,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, inject, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject, nextTick, shallowRef } from 'vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import * as api from '../api.js'
 import { Promotion, DocumentCopy, Check } from '@element-plus/icons-vue'
+
+// 配置 marked
+marked.setOptions({
+  breaks: true,
+  gfm: true
+})
 
 const messagesContainer = ref(null)
 const question = ref('')
@@ -239,14 +245,14 @@ const handleSend = async () => {
     copied: false
   })
 
-  // 添加空的 AI 消息用于流式更新
-  const botMsg = {
+  // 添加空的 AI 消息用于流式更新 - 使用索引来追踪
+  const botMsgIndex = messages.value.length
+  messages.value.push({
     content: '',
     role: 'bot',
     timestamp: new Date().toISOString(),
     copied: false
-  }
-  messages.value.push(botMsg)
+  })
 
   isBotResponding.value = true
 
@@ -273,18 +279,20 @@ const handleSend = async () => {
         if (trimmedLine.startsWith('data:') && trimmedLine !== 'data:[DONE]') {
           const data = trimmedLine.substring(5).trim()
           if (data) {
-            botMsg.content += data
+            // 直接更新 messages 数组中的内容
+            messages.value[botMsgIndex].content += data
+            // 强制触发视图更新
+            await nextTick()
           }
         }
       }
 
-      await nextTick()
       scrollToBottom()
     }
 
     await refreshConversations()
   } catch (error) {
-    botMsg.content = '❌ 请求失败：' + error.message
+    messages.value[botMsgIndex].content = '❌ 请求失败：' + error.message
     ElMessage.error('AI 响应失败：' + error.message)
   } finally {
     isBotResponding.value = false
@@ -296,8 +304,7 @@ const handleSend = async () => {
 const renderMarkdown = (content) => {
   if (!content) return ''
   try {
-    const html = marked.parse(content, { async: false })
-    return DOMPurify.sanitize(html)
+    return DOMPurify.sanitize(marked.parse(content))
   } catch (error) {
     console.error('Markdown 渲染失败:', error)
     return content
