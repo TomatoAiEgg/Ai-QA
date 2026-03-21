@@ -126,17 +126,25 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, inject, nextTick, shallowRef } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import hljs from 'highlight.js'
 import * as api from '../api.js'
 import { Promotion, DocumentCopy, Check } from '@element-plus/icons-vue'
+import 'highlight.js/styles/atom-one-dark.css'
 
-// 配置 marked
+// 配置 marked 使用 highlight.js 进行代码高亮
 marked.setOptions({
   breaks: true,
-  gfm: true
+  gfm: true,
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value
+    }
+    return hljs.highlightAuto(code).value
+  }
 })
 
 const messagesContainer = ref(null)
@@ -245,7 +253,7 @@ const handleSend = async () => {
     copied: false
   })
 
-  // 添加空的 AI 消息用于流式更新 - 使用索引来追踪
+  // 添加空的 AI 消息用于流式更新
   const botMsgIndex = messages.value.length
   messages.value.push({
     content: '',
@@ -279,17 +287,18 @@ const handleSend = async () => {
         if (trimmedLine.startsWith('data:') && trimmedLine !== 'data:[DONE]') {
           const data = trimmedLine.substring(5).trim()
           if (data) {
-            // 直接更新 messages 数组中的内容
+            // 直接更新数组内容，Vue 会自动追踪响应式
             messages.value[botMsgIndex].content += data
-            // 强制触发视图更新
-            await nextTick()
           }
         }
       }
 
+      // 每接收一段数据就滚动一次，但不强制刷新 DOM
       scrollToBottom()
     }
 
+    // 流式完成后刷新一次 DOM
+    await nextTick()
     await refreshConversations()
   } catch (error) {
     messages.value[botMsgIndex].content = '❌ 请求失败：' + error.message

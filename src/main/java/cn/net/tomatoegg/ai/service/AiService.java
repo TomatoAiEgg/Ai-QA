@@ -51,25 +51,6 @@ public class AiService {
         this.chatClient = chatClientBuilder.build();
     }
 
-    public Flux<String> chatByRag(String question) {
-        return chatByRag(question, null, null);
-    }
-
-    public Flux<String> chatByRag(String question, UUID conversationId) {
-        return chatByRag(question, conversationId, null);
-    }
-
-    /**
-     * RAG 对话接口 - 带知识库增强的 AI 对话（支持指定知识库）
-     *
-     * @param question       用户问题
-     * @param conversationId 对话 ID（可选）
-     * @param kbId           知识库 ID（可选，为 null 时检索所有知识库）
-     * @return 流式响应 Flux<String>
-     */
-    public Flux<String> chatByRag(String question, UUID conversationId, UUID kbId) {
-        return chatByRag(question, conversationId, kbId, "qwen");
-    }
 
     /**
      * RAG 对话接口 - 带知识库增强的 AI 对话
@@ -207,13 +188,8 @@ public class AiService {
         return fluxResult;
     }
 
-    public Flux<String> chatByStream(String question) {
-        return chatByStream(question, null);
-    }
 
-    public Flux<String> chatByStream(String question, UUID conversationId) {
-        return chatByStream(question, conversationId, "qwen");
-    }
+
 
     public Flux<String> chatByStream(String question, UUID conversationId, String model) {
         log.info("收到普通 AI 对话请求，问题：{}, model: {}", question, model);

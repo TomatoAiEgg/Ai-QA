@@ -244,17 +244,19 @@
   margin-bottom: 0;
 }
 
+/* 代码块样式 */
 .message-bubble.bot .md-content pre {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  padding: 14px 16px;
-  border-radius: 10px;
+  background: #282c34;
+  color: #abb2bf;
+  padding: 16px;
+  border-radius: 8px;
   overflow-x: auto;
   margin: 12px 0;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 0.85rem;
   line-height: 1.5;
-  border: 1px solid #e8e8e8;
+  border: 1px solid #1e1e1e;
+  position: relative;
 }
 
 .message-bubble.bot .md-content code {
@@ -270,6 +272,38 @@
   background: transparent;
   padding: 0;
   color: inherit;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* 代码块内的注释 */
+.message-bubble.bot .md-content pre .hljs-comment {
+  color: #5c6370;
+  font-style: italic;
+}
+
+/* 代码块内的关键字 */
+.message-bubble.bot .md-content pre .hljs-keyword {
+  color: #c678dd;
+}
+
+/* 代码块内的字符串 */
+.message-bubble.bot .md-content pre .hljs-string {
+  color: #98c379;
+}
+
+/* 代码块内的数字 */
+.message-bubble.bot .md-content pre .hljs-number {
+  color: #d19a66;
+}
+
+/* 代码块内的函数 */
+.message-bubble.bot .md-content pre .hljs-function {
+  color: #61afef;
+}
+
+/* 代码块内的类 */
+.message-bubble.bot .md-content pre .hljs-class {
+  color: #e5c07b;
 }
 
 .message-bubble.bot .md-content ul,
@@ -293,6 +327,8 @@
   width: 100%;
   margin: 12px 0;
   font-size: 0.9rem;
+  overflow-x: auto;
+  display: block;
 }
 
 .message-bubble.bot .md-content th {
