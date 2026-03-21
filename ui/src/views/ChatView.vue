@@ -195,14 +195,6 @@ const renderMarkdown = (content) => {
   }
 }
 
-const updateMessageContent = (msgId, content) => {
-  const msg = messages.value.find(m => m.id === msgId)
-  if (msg) {
-    msg.content = content
-    msg.renderedContent = renderMarkdown(content)
-  }
-}
-
 const useSuggestion = async (text) => {
   try {
     const conv = await api.createConversation()
@@ -267,6 +259,7 @@ const handleSend = async () => {
   })
 
   const botMsgId = `bot-${Date.now()}`
+  let botContent = ''
   messages.value.push({
     id: botMsgId,
     content: '',
@@ -299,17 +292,29 @@ const handleSend = async () => {
         if (trimmedLine.startsWith('data:') && trimmedLine !== 'data:[DONE]') {
           const data = trimmedLine.substring(5).trim()
           if (data) {
-            updateMessageContent(botMsgId, messages.value.find(m => m.id === botMsgId)?.content + data)
+            botContent += data
+            // 找到消息并更新
+            const msg = messages.value.find(m => m.id === botMsgId)
+            if (msg) {
+              msg.content = botContent
+              msg.renderedContent = renderMarkdown(botContent)
+            }
           }
         }
       }
+      // 每接收一段数据就滚动
       scrollToBottom()
     }
 
+    // 完成后刷新
     await nextTick()
     await refreshConversations()
   } catch (error) {
-    updateMessageContent(botMsgId, '❌ 请求失败：' + error.message)
+    const msg = messages.value.find(m => m.id === botMsgId)
+    if (msg) {
+      msg.content = '❌ 请求失败：' + error.message
+      msg.renderedContent = renderMarkdown('❌ 请求失败：' + error.message)
+    }
     ElMessage.error('AI 响应失败：' + error.message)
   } finally {
     isBotResponding.value = false
