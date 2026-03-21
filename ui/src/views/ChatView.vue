@@ -184,8 +184,17 @@ const canSend = computed(() => question.value.trim().length > 0)
 
 const renderMarkdown = (content) => {
   if (!content) return ''
-  const html = md.render(content)
-  return DOMPurify.sanitize(html)
+  try {
+    // 预处理：修复常见的 Markdown 格式问题
+    let processed = content
+      // 修复代码块：将单独一行的 java/python 等替换为 ```java ``` 格式
+      .replace(/^(\s*)(java|python|javascript|typescript|sql|shell|bash|json|xml|html|css|go|rust|c|cpp)\s*$/gm, '$1```$2')
+    const html = md.render(processed)
+    return DOMPurify.sanitize(html)
+  } catch (error) {
+    console.error('Markdown 渲染失败:', error)
+    return content
+  }
 }
 
 const updateMessageContent = (msgId, content) => {
