@@ -115,7 +115,6 @@
 import { ref, computed, onMounted, onUnmounted, inject, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import MarkdownIt from 'markdown-it'
-import markdownItHighlightjs from 'markdown-it-highlightjs'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js'
 import * as api from '../api.js'
@@ -127,9 +126,9 @@ const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
-  breaks: false,
+  breaks: true,
   langPrefix: 'language-',
-  highlight: (code, lang) => {
+  highlight: function(code, lang) {
     if (lang && hljs.getLanguage(lang)) {
       try {
         return '<pre class="hljs"><code>' +
@@ -142,7 +141,6 @@ const md = new MarkdownIt({
     return '<pre class="hljs"><code>' + md.utils.escapeHtml(code) + '</code></pre>'
   }
 })
-md.use(markdownItHighlightjs)
 
 const messagesContainer = ref(null)
 const question = ref('')
