@@ -231,20 +231,20 @@
   color: #1a1a1a;
 }
 
-.message-bubble.bot .md-content :deep(p) {
+.message-bubble.bot .md-content p {
   margin: 0.5em 0;
   line-height: 1.8;
 }
 
-.message-bubble.bot .md-content :deep(p:first-child) {
+.message-bubble.bot .md-content p:first-child {
   margin-top: 0;
 }
 
-.message-bubble.bot .md-content :deep(p:last-child) {
+.message-bubble.bot .md-content p:last-child {
   margin-bottom: 0;
 }
 
-.message-bubble.bot .md-content :deep(pre) {
+.message-bubble.bot .md-content pre {
   background: #1e1e1e;
   color: #d4d4d4;
   padding: 14px 16px;
@@ -257,7 +257,7 @@
   border: 1px solid #e8e8e8;
 }
 
-.message-bubble.bot .md-content :deep(code) {
+.message-bubble.bot .md-content code {
   background: #f5f5f5;
   color: #e83e8c;
   padding: 2px 6px;
@@ -266,19 +266,19 @@
   font-size: 0.85em;
 }
 
-.message-bubble.bot .md-content :deep(pre code) {
+.message-bubble.bot .md-content pre code {
   background: transparent;
   padding: 0;
   color: inherit;
 }
 
-.message-bubble.bot .md-content :deep(ul),
-.message-bubble.bot .md-content :deep(ol) {
+.message-bubble.bot .md-content ul,
+.message-bubble.bot .md-content ol {
   padding-left: 24px;
   margin: 8px 0;
 }
 
-.message-bubble.bot .md-content :deep(blockquote) {
+.message-bubble.bot .md-content blockquote {
   border-left: 4px solid #667EEA;
   padding-left: 16px;
   margin: 12px 0;
@@ -288,14 +288,14 @@
   border-radius: 8px;
 }
 
-.message-bubble.bot .md-content :deep(table) {
+.message-bubble.bot .md-content table {
   border-collapse: collapse;
   width: 100%;
   margin: 12px 0;
   font-size: 0.9rem;
 }
 
-.message-bubble.bot .md-content :deep(th) {
+.message-bubble.bot .md-content th {
   background: #f5f5f5;
   font-weight: 600;
   padding: 10px 12px;
@@ -303,48 +303,48 @@
   border: 1px solid #e8e8e8;
 }
 
-.message-bubble.bot .md-content :deep(td) {
+.message-bubble.bot .md-content td {
   padding: 10px 12px;
   border: 1px solid #e8e8e8;
 }
 
-.message-bubble.bot .md-content :deep(h1),
-.message-bubble.bot .md-content :deep(h2),
-.message-bubble.bot .md-content :deep(h3) {
+.message-bubble.bot .md-content h1,
+.message-bubble.bot .md-content h2,
+.message-bubble.bot .md-content h3 {
   margin: 16px 0 10px 0;
   font-weight: 600;
   line-height: 1.4;
   color: #1a1a1a;
 }
 
-.message-bubble.bot .md-content :deep(h1) {
+.message-bubble.bot .md-content h1 {
   font-size: 1.4rem;
   border-bottom: 2px solid #e8e8e8;
   padding-bottom: 8px;
 }
 
-.message-bubble.bot .md-content :deep(h2) {
+.message-bubble.bot .md-content h2 {
   font-size: 1.2rem;
   border-bottom: 1px solid #e8e8e8;
   padding-bottom: 6px;
 }
 
-.message-bubble.bot .md-content :deep(h3) {
+.message-bubble.bot .md-content h3 {
   font-size: 1.05rem;
 }
 
-.message-bubble.bot .md-content :deep(img) {
+.message-bubble.bot .md-content img {
   max-width: 100%;
   border-radius: 8px;
   margin: 8px 0;
 }
 
-.message-bubble.bot .md-content :deep(a) {
+.message-bubble.bot .md-content a {
   color: #667EEA;
   text-decoration: none;
 }
 
-.message-bubble.bot .md-content :deep(a:hover) {
+.message-bubble.bot .md-content a:hover {
   text-decoration: underline;
 }
 
@@ -530,12 +530,13 @@
   flex: 1;
 }
 
-.question-input :deep(.el-input__wrapper) {
+/* Element Plus 输入框样式覆盖 */
+.question-input .el-input__wrapper {
   box-shadow: none !important;
   background: transparent;
 }
 
-.question-input :deep(.el-input__inner) {
+.question-input .el-input__inner {
   font-size: 1rem;
   line-height: 1.5;
   resize: none;

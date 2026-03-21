@@ -295,8 +295,13 @@ const handleSend = async () => {
 
 const renderMarkdown = (content) => {
   if (!content) return ''
-  const html = marked.parse(content)
-  return DOMPurify.sanitize(html)
+  try {
+    const html = marked.parse(content, { async: false })
+    return DOMPurify.sanitize(html)
+  } catch (error) {
+    console.error('Markdown 渲染失败:', error)
+    return content
+  }
 }
 
 const copyToClipboard = async (botMsg) => {
