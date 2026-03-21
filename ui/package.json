@@ -1,7 +1,7 @@
 {
-  "name": "susan-ai-ui",
+  "name": "Ai-QA-ui",
   "version": "1.0.0",
-  "description": "Susan AI Knowledge Base Management UI",
+  "description": "Ai-QA Knowledge Base Management UI",
   "type": "module",
   "scripts": {
     "dev": "vite",

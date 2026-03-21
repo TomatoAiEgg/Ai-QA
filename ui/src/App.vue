@@ -54,11 +54,11 @@
           <div class="header-right">
             <el-tooltip content="新建对话" placement="bottom">
               <el-button class="new-chat-btn" :icon="Plus" @click="createNewConversation">
-                <span class="btn-text">新建对话</span>
+                <span class="btn-text">新对话</span>
               </el-button>
             </el-tooltip>
             <el-tooltip content="知识库管理" placement="bottom">
-              <el-button class="rag-btn" :icon="Folder" @click="goToRag" circle />
+              <el-button class="rag-btn" :icon="Folder" @click="openRagModal" circle />
             </el-tooltip>
           </div>
         </el-header>
@@ -68,25 +68,23 @@
         </el-main>
       </el-container>
     </el-container>
+
+    <!-- RAG 知识库管理模态框 -->
+    <RagView v-if="showRagModal" @close="closeRagModal" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, provide, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import * as api from './api.js'
 import { ChatDotRound, Fold, Expand, Plus, Folder, Edit, Delete } from '@element-plus/icons-vue'
+import RagView from './views/RagView.vue'
 
-const router = useRouter()
-const route = useRoute()
 const sidebarVisible = ref(true)
 const conversations = ref([])
 const currentConvId = ref(null)
-
-const isChatPage = computed(() => {
-  return route.path === '/' || route.path === ''
-})
+const showRagModal = ref(false)
 
 const refreshConversations = async () => {
   try {
@@ -96,41 +94,42 @@ const refreshConversations = async () => {
   }
 }
 
+// 加载并选中第一个历史对话
+const loadAndSelectFirstConversation = async () => {
+  await refreshConversations()
+  if (conversations.value.length > 0) {
+    // 有历史对话，选中第一个
+    currentConvId.value = conversations.value[0].id
+    window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: conversations.value[0].id } }))
+  } else {
+    // 没有历史对话，清空当前对话
+    currentConvId.value = null
+    window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: null } }))
+  }
+}
+
 provide('refreshConversations', refreshConversations)
 provide('currentConvId', currentConvId)
-provide('isChatPage', isChatPage)
+provide('loadAndSelectFirstConversation', loadAndSelectFirstConversation)
 
 onMounted(() => {
-  refreshConversations()
+  loadAndSelectFirstConversation()
 })
 
 const toggleSidebar = () => {
   sidebarVisible.value = !sidebarVisible.value
 }
 
-const selectConversation = async (id) => {
+// 选择历史对话
+const selectConversation = (id) => {
   currentConvId.value = id
-  if (!isChatPage.value) {
-    router.push('/')
-  }
-  setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id } }))
-  }, 100)
+  window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id } }))
 }
 
-const createNewConversation = async () => {
-  try {
-    const conv = await api.createConversation()
-    currentConvId.value = conv.id
-    await refreshConversations()
-    router.push('/')
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: conv.id } }))
-    }, 100)
-    ElMessage.success('新建对话成功')
-  } catch (error) {
-    ElMessage.error('新建对话失败：' + error.message)
-  }
+// 新建对话 - 直接跳首页，清空当前对话
+const createNewConversation = () => {
+  currentConvId.value = null
+  window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: null } }))
 }
 
 const editConversation = async (conv) => {
@@ -151,6 +150,7 @@ const deleteConversation = async (conv) => {
     await api.deleteConversation(conv.id)
     if (currentConvId.value === conv.id) {
       currentConvId.value = null
+      window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: null } }))
     }
     await refreshConversations()
     ElMessage.success('对话已删除')
@@ -159,8 +159,14 @@ const deleteConversation = async (conv) => {
   }
 }
 
-const goToRag = () => {
-  router.push('/rag')
+// 打开 RAG 模态框
+const openRagModal = () => {
+  showRagModal.value = true
+}
+
+// 关闭 RAG 模态框
+const closeRagModal = () => {
+  showRagModal.value = false
 }
 </script>
 

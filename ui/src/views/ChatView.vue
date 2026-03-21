@@ -109,9 +109,9 @@
           type="textarea"
           resize="none"
         />
-        <el-button 
-          :icon="Promotion" 
-          @click="handleSend" 
+        <el-button
+          :icon="Promotion"
+          @click="handleSend"
           :disabled="!canSend || isBotResponding"
           class="send-btn"
           :class="{ sending: isBotResponding }"
@@ -142,27 +142,55 @@ const model = ref('qwen')
 
 const currentConvId = inject('currentConvId', ref(null))
 const refreshConversations = inject('refreshConversations', () => {})
+const loadAndSelectFirstConversation = inject('loadAndSelectFirstConversation', () => {})
 
+// 处理对话变化事件
 const handleConversationChange = (event) => {
   const { id } = event.detail
   currentConvId.value = id
-  loadMessages(id)
+  if (id) {
+    loadMessages(id)
+  } else {
+    // id 为 null，清空消息显示欢迎页面
+    messages.value = []
+  }
+}
+
+// 监听新建对话事件
+const handleNewConversation = () => {
+  currentConvId.value = null
+  messages.value = []
 }
 
 onMounted(() => {
   window.addEventListener('conversation-change', handleConversationChange)
+  window.addEventListener('new-conversation', handleNewConversation)
 })
 
 onUnmounted(() => {
   window.removeEventListener('conversation-change', handleConversationChange)
+  window.removeEventListener('new-conversation', handleNewConversation)
 })
 
 const canSend = computed(() => question.value.trim().length > 0)
 
+// 使用预文本 - 先创建新对话，再发送消息
 const useSuggestion = async (text) => {
-  question.value = text
-  await nextTick()
-  await handleSend()
+  // 先创建新对话
+  try {
+    const conv = await api.createConversation()
+    currentConvId.value = conv.id
+    await refreshConversations()
+    // 通知侧边栏更新选中状态
+    window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: conv.id } }))
+    
+    // 然后发送消息
+    question.value = text
+    await nextTick()
+    await handleSend()
+  } catch (error) {
+    ElMessage.error('创建对话失败：' + error.message)
+  }
 }
 
 const loadMessages = async (convId) => {
@@ -191,13 +219,12 @@ const handleSend = async () => {
   const content = question.value.trim()
   question.value = ''
 
+  // 如果没有当前对话，先创建一个新的
   if (!currentConvId.value) {
     try {
       const conv = await api.createConversation()
       currentConvId.value = conv.id
       await refreshConversations()
-      // 通知切换到新对话
-      window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: conv.id } }))
     } catch (error) {
       ElMessage.error('创建对话失败：' + error.message)
       return
@@ -297,7 +324,6 @@ const formatTime = (timestamp) => {
 const scrollToBottom = (force = false) => {
   setTimeout(() => {
     if (messagesContainer.value) {
-      // 平滑滚动或立即滚动
       if (force) {
         messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
       } else {
