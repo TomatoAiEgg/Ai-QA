@@ -67,12 +67,16 @@ public class AiController {
     /**
      * AI 对话接口
      *
-     * @param question 问题
+     * @param request 请求体 {question: String, conversationId: UUID, useRag: boolean}
      * @return 流式回复
      */
     @PostMapping(value = "/ai/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> chat(@RequestBody String question,
-                             @RequestParam("conversationId") UUID conversationId) {
+    public Flux<ServerSentEvent<String>> chat(@RequestBody Map<String, Object> request) {
+        String question = (String) request.get("question");
+        String conversationIdStr = (String) request.get("conversationId");
+        UUID conversationId = (conversationIdStr != null && !conversationIdStr.isBlank()) 
+                ? UUID.fromString(conversationIdStr) 
+                : null;
         return aiService.chatByStream(question, conversationId, "qwen")
                 .map(text -> ServerSentEvent.builder(text).build());
     }
@@ -80,16 +84,21 @@ public class AiController {
     /**
      * RAG 对话接口（支持指定知识库）
      *
-     * @param question 问题
-     * @param conversationId 对话 ID
-     * @param kbId 知识库 ID（可选）
+     * @param request 请求体 {question: String, conversationId: UUID, kbId: UUID, model: String}
      * @return 流式回复
      */
     @PostMapping(value = "/ai/chatByRag", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> chatByRag(@RequestBody String question,
-                                  @RequestParam("conversationId") UUID conversationId,
-                                  @RequestParam(value = "kbId", required = false) UUID kbId,
-                                  @RequestParam(value = "model", defaultValue = "qwen") String model) {
+    public Flux<ServerSentEvent<String>> chatByRag(@RequestBody Map<String, Object> request) {
+        String question = (String) request.get("question");
+        String conversationIdStr = (String) request.get("conversationId");
+        UUID conversationId = (conversationIdStr != null && !conversationIdStr.isBlank()) 
+                ? UUID.fromString(conversationIdStr) 
+                : null;
+        String kbIdStr = (String) request.get("kbId");
+        UUID kbId = (kbIdStr != null && !kbIdStr.isBlank()) 
+                ? UUID.fromString(kbIdStr) 
+                : null;
+        String model = (String) request.getOrDefault("model", "qwen");
         return aiService.chatByRag(question, conversationId, kbId, model)
                 .map(text -> ServerSentEvent.builder(text).build());
     }

@@ -81,7 +81,8 @@ export const getConversationMessages = async (id) => {
 // ========== AI 对话 ==========
 // 使用 fetch API 读取流式响应
 export const chatByStream = async (question, conversationId, useRag) => {
-  const response = await fetch('/ai/chat', {
+  const url = useRag ? '/ai/chatByRag' : '/ai/chat'
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
