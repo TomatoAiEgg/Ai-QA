@@ -1,8 +1,7 @@
 <template>
   <div class="chat-container">
-    <!-- 消息列表 -->
     <div class="chat-messages" ref="messagesContainer">
-      <!-- 欢迎状态 - 仅在没有消息时显示 -->
+      <!-- 欢迎状态 -->
       <div v-if="messages.length === 0" class="welcome-container">
         <div class="welcome-logo">
           <div class="logo-icon">
@@ -22,8 +21,6 @@
           <h1 class="welcome-title">AI-QA 智能助手</h1>
           <p class="welcome-subtitle">有什么可以帮你的吗？</p>
         </div>
-
-        <!-- 快捷指令 -->
         <div class="suggestions-grid">
           <div class="suggestion-card" @click="useSuggestion('介绍一下你自己')">
             <div class="suggestion-icon">👋</div>
@@ -44,21 +41,17 @@
         </div>
       </div>
 
-      <!-- 消息列表 - 有消息时显示 -->
+      <!-- 消息列表 -->
       <div v-else class="messages-list">
-        <div v-for="(msg, index) in messages" :key="index" :class="['message-wrapper', msg.role]">
+        <div v-for="msg in messages" :key="msg.id" :class="['message-wrapper', msg.role]">
           <div class="message-avatar">
-            <div v-if="msg.role === 'user'" class="avatar user-avatar">
-              <span>👤</span>
-            </div>
-            <div v-else class="avatar bot-avatar">
-              <span>🤖</span>
-            </div>
+            <div v-if="msg.role === 'user'" class="avatar user-avatar"><span>👤</span></div>
+            <div v-else class="avatar bot-avatar"><span>🤖</span></div>
           </div>
           <div class="message-content">
             <div :class="['message-bubble', msg.role]">
               <div v-if="msg.role === 'user'">{{ msg.content }}</div>
-              <div v-else class="md-content" v-html="renderMarkdown(msg.content)"></div>
+              <div v-else class="md-content" v-html="msg.renderedContent"></div>
             </div>
             <div class="message-meta">
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
@@ -69,8 +62,6 @@
             </div>
           </div>
         </div>
-
-        <!-- 打字机效果 -->
         <div v-if="isBotResponding" class="typing-wrapper">
           <div class="typing-indicator">
             <div class="typing-dot"></div>
@@ -81,9 +72,7 @@
       </div>
     </div>
 
-    <!-- 底部输入区 - 始终显示 -->
     <div class="input-area">
-      <!-- RAG 开关和模型选择 -->
       <div class="input-options">
         <label class="rag-switch" :class="{ active: useRag }">
           <input type="checkbox" v-model="useRag">
@@ -96,8 +85,6 @@
           <el-option label="智谱" value="zhipu" disabled />
         </el-select>
       </div>
-
-      <!-- 输入框 -->
       <div class="input-box-wrapper">
         <el-input
           v-model="question"
@@ -119,7 +106,6 @@
           发送
         </el-button>
       </div>
-
       <div class="input-hint">AI 生成的内容可能不准确，请仔细甄别</div>
     </div>
   </div>
@@ -128,17 +114,20 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, inject, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { marked } from 'marked'
+import MarkdownIt from 'markdown-it'
+import markdownItHighlightjs from 'markdown-it-highlightjs'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js'
 import * as api from '../api.js'
 import { Promotion, DocumentCopy, Check } from '@element-plus/icons-vue'
 import 'highlight.js/styles/atom-one-dark.css'
 
-// 配置 marked 使用 highlight.js 进行代码高亮
-marked.setOptions({
+// 初始化 markdown-it 配置
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
   breaks: true,
-  gfm: true,
   highlight: (code, lang) => {
     if (lang && hljs.getLanguage(lang)) {
       return hljs.highlight(code, { language: lang }).value
@@ -146,6 +135,7 @@ marked.setOptions({
     return hljs.highlightAuto(code).value
   }
 })
+md.use(markdownItHighlightjs)
 
 const messagesContainer = ref(null)
 const question = ref('')
@@ -158,19 +148,16 @@ const currentConvId = inject('currentConvId', ref(null))
 const refreshConversations = inject('refreshConversations', () => {})
 const loadAndSelectFirstConversation = inject('loadAndSelectFirstConversation', () => {})
 
-// 处理对话变化事件
 const handleConversationChange = (event) => {
   const { id } = event.detail
   currentConvId.value = id
   if (id) {
     loadMessages(id)
   } else {
-    // id 为 null，清空消息显示欢迎页面
     messages.value = []
   }
 }
 
-// 监听新建对话事件
 const handleNewConversation = () => {
   currentConvId.value = null
   messages.value = []
@@ -188,17 +175,26 @@ onUnmounted(() => {
 
 const canSend = computed(() => question.value.trim().length > 0)
 
-// 使用预文本 - 先创建新对话，再发送消息
+const renderMarkdown = (content) => {
+  if (!content) return ''
+  const html = md.render(content)
+  return DOMPurify.sanitize(html)
+}
+
+const updateMessageContent = (msgId, content) => {
+  const msg = messages.value.find(m => m.id === msgId)
+  if (msg) {
+    msg.content = content
+    msg.renderedContent = renderMarkdown(content)
+  }
+}
+
 const useSuggestion = async (text) => {
-  // 先创建新对话
   try {
     const conv = await api.createConversation()
     currentConvId.value = conv.id
     await refreshConversations()
-    // 通知侧边栏更新选中状态
     window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: conv.id } }))
-    
-    // 然后发送消息
     question.value = text
     await nextTick()
     await handleSend()
@@ -215,7 +211,9 @@ const loadMessages = async (convId) => {
   try {
     const msgs = await api.getConversationMessages(convId)
     messages.value = msgs.map(m => ({
+      id: m.id,
       content: m.content,
+      renderedContent: renderMarkdown(m.content),
       role: m.role === 'USER' ? 'user' : 'bot',
       timestamp: m.createdAt,
       copied: false
@@ -233,7 +231,6 @@ const handleSend = async () => {
   const content = question.value.trim()
   question.value = ''
 
-  // 如果没有当前对话，先创建一个新的
   if (!currentConvId.value) {
     try {
       const conv = await api.createConversation()
@@ -245,26 +242,27 @@ const handleSend = async () => {
     }
   }
 
-  // 添加用户消息
+  const userMsgId = `user-${Date.now()}`
   messages.value.push({
+    id: userMsgId,
     content,
+    renderedContent: '',
     role: 'user',
     timestamp: new Date().toISOString(),
     copied: false
   })
 
-  // 添加空的 AI 消息用于流式更新
-  const botMsgIndex = messages.value.length
+  const botMsgId = `bot-${Date.now()}`
   messages.value.push({
+    id: botMsgId,
     content: '',
+    renderedContent: '',
     role: 'bot',
     timestamp: new Date().toISOString(),
     copied: false
   })
 
   isBotResponding.value = true
-
-  // 等待 DOM 更新后滚动
   await nextTick()
   scrollToBottom(true)
 
@@ -287,21 +285,17 @@ const handleSend = async () => {
         if (trimmedLine.startsWith('data:') && trimmedLine !== 'data:[DONE]') {
           const data = trimmedLine.substring(5).trim()
           if (data) {
-            // 直接更新数组内容，Vue 会自动追踪响应式
-            messages.value[botMsgIndex].content += data
+            updateMessageContent(botMsgId, messages.value.find(m => m.id === botMsgId)?.content + data)
           }
         }
       }
-
-      // 每接收一段数据就滚动一次，但不强制刷新 DOM
       scrollToBottom()
     }
 
-    // 流式完成后刷新一次 DOM
     await nextTick()
     await refreshConversations()
   } catch (error) {
-    messages.value[botMsgIndex].content = '❌ 请求失败：' + error.message
+    updateMessageContent(botMsgId, '❌ 请求失败：' + error.message)
     ElMessage.error('AI 响应失败：' + error.message)
   } finally {
     isBotResponding.value = false
@@ -310,23 +304,11 @@ const handleSend = async () => {
   }
 }
 
-const renderMarkdown = (content) => {
-  if (!content) return ''
-  try {
-    return DOMPurify.sanitize(marked.parse(content))
-  } catch (error) {
-    console.error('Markdown 渲染失败:', error)
-    return content
-  }
-}
-
 const copyToClipboard = async (botMsg) => {
   try {
     await navigator.clipboard.writeText(botMsg.content)
     botMsg.copied = true
-    setTimeout(() => {
-      botMsg.copied = false
-    }, 2000)
+    setTimeout(() => { botMsg.copied = false }, 2000)
     ElMessage.success('已复制')
   } catch (error) {
     ElMessage.error('复制失败：' + error.message)
@@ -336,10 +318,7 @@ const copyToClipboard = async (botMsg) => {
 const formatTime = (timestamp) => {
   if (!timestamp) return ''
   const date = new Date(timestamp)
-  return date.toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
 const scrollToBottom = (force = false) => {
