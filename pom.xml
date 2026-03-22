@@ -6,7 +6,7 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.4.2</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <relativePath/>
     </parent>
     <groupId>com.tomatoegg</groupId>
     <artifactId>AI-QA</artifactId>
@@ -68,13 +68,6 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-tika-document-reader</artifactId>
-        </dependency>
-        <!-- Rerank 重排序模型依�?-->
-        <!-- 添加Thymeleaf依赖 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-thymeleaf</artifactId>
-            <version>3.4.0</version>
         </dependency>
         <dependency>
             <groupId>cn.hutool</groupId>
@@ -160,4 +153,3 @@
         </repository>
     </repositories>
 </project>
-

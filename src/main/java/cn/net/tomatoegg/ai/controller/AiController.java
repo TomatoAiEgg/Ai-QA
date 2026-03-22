@@ -10,7 +10,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.ModelAndView;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
@@ -38,30 +37,6 @@ public class AiController {
         this.conversationService = conversationService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.tokenTextSplitter = tokenTextSplitter;
-    }
-
-    /**
-     * 访问苏三 AI 问答助手首页
-     *
-     * @param modelAndView
-     * @return
-     */
-    @GetMapping("/")
-    public ModelAndView chat(ModelAndView modelAndView) {
-        modelAndView.setViewName("chat");
-        return modelAndView;
-    }
-
-    /**
-     * 访问 RAG 知识库管理页面
-     *
-     * @param modelAndView
-     * @return
-     */
-    @GetMapping("/rag")
-    public ModelAndView rag(ModelAndView modelAndView) {
-        modelAndView.setViewName("rag");
-        return modelAndView;
     }
 
     /**
