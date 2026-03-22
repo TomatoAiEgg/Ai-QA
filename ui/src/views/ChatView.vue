@@ -278,6 +278,8 @@ const handleSend = async () => {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let lastRenderTime = 0
+    const RENDER_DELAY = 150 // 每 150ms 渲染一次
 
     while (true) {
       const { done, value } = await reader.read()
@@ -293,21 +295,32 @@ const handleSend = async () => {
           const data = trimmedLine.substring(5).trim()
           if (data) {
             botContent += data
-            // 找到消息并更新
-            const msg = messages.value.find(m => m.id === botMsgId)
-            if (msg) {
-              msg.content = botContent
-              msg.renderedContent = renderMarkdown(botContent)
-            }
           }
         }
       }
-      // 每接收一段数据就滚动
-      scrollToBottom()
+
+      // 定期更新视图
+      const now = Date.now()
+      if (now - lastRenderTime > RENDER_DELAY) {
+        const msg = messages.value.find(m => m.id === botMsgId)
+        if (msg) {
+          msg.content = botContent
+          msg.renderedContent = renderMarkdown(botContent)
+        }
+        lastRenderTime = now
+        scrollToBottom()
+        // 不等待 nextTick，让更新异步进行
+      }
     }
 
-    // 完成后刷新
+    // 最后一次更新
+    const msg = messages.value.find(m => m.id === botMsgId)
+    if (msg) {
+      msg.content = botContent
+      msg.renderedContent = renderMarkdown(botContent)
+    }
     await nextTick()
+    scrollToBottom()
     await refreshConversations()
   } catch (error) {
     const msg = messages.value.find(m => m.id === botMsgId)
