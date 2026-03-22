@@ -50,8 +50,7 @@
           </div>
           <div class="message-content">
             <div :class="['message-bubble', msg.role]">
-              <div v-if="msg.role === 'user'">{{ msg.content }}</div>
-              <div v-else class="md-content" v-html="msg.renderedContent"></div>
+              <div class="message-text">{{ msg.content }}</div>
             </div>
             <div class="message-meta">
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
@@ -114,33 +113,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, inject, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import MarkdownIt from 'markdown-it'
-import DOMPurify from 'dompurify'
-import hljs from 'highlight.js'
 import * as api from '../api.js'
 import { Promotion, DocumentCopy, Check } from '@element-plus/icons-vue'
-import 'highlight.js/styles/atom-one-dark.css'
-
-// 初始化 markdown-it 配置
-const md = new MarkdownIt({
-  html: true,
-  linkify: true,
-  typographer: true,
-  breaks: true,
-  langPrefix: 'language-',
-  highlight: function(code, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return '<pre class="hljs"><code>' +
-               hljs.highlight(code, { language: lang }).value +
-               '</code></pre>'
-      } catch (e) {
-        console.error('Highlight error:', e)
-      }
-    }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(code) + '</code></pre>'
-  }
-})
 
 const messagesContainer = ref(null)
 const question = ref('')
@@ -180,21 +154,6 @@ onUnmounted(() => {
 
 const canSend = computed(() => question.value.trim().length > 0)
 
-const renderMarkdown = (content) => {
-  if (!content) return ''
-  try {
-    // 预处理：修复常见的 Markdown 格式问题
-    let processed = content
-      // 修复代码块：将单独一行的 java/python 等替换为 ```java ``` 格式
-      .replace(/^(\s*)(java|python|javascript|typescript|sql|shell|bash|json|xml|html|css|go|rust|c|cpp)\s*$/gm, '$1```$2')
-    const html = md.render(processed)
-    return DOMPurify.sanitize(html)
-  } catch (error) {
-    console.error('Markdown 渲染失败:', error)
-    return content
-  }
-}
-
 const useSuggestion = async (text) => {
   try {
     const conv = await api.createConversation()
@@ -219,7 +178,6 @@ const loadMessages = async (convId) => {
     messages.value = msgs.map(m => ({
       id: m.id,
       content: m.content,
-      renderedContent: renderMarkdown(m.content),
       role: m.role === 'USER' ? 'user' : 'bot',
       timestamp: m.createdAt,
       copied: false
@@ -248,11 +206,9 @@ const handleSend = async () => {
     }
   }
 
-  const userMsgId = `user-${Date.now()}`
   messages.value.push({
-    id: userMsgId,
+    id: `user-${Date.now()}`,
     content,
-    renderedContent: '',
     role: 'user',
     timestamp: new Date().toISOString(),
     copied: false
@@ -263,7 +219,6 @@ const handleSend = async () => {
   messages.value.push({
     id: botMsgId,
     content: '',
-    renderedContent: '',
     role: 'bot',
     timestamp: new Date().toISOString(),
     copied: false
@@ -278,8 +233,6 @@ const handleSend = async () => {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-    let lastRenderTime = 0
-    const RENDER_DELAY = 150 // 每 150ms 渲染一次
 
     while (true) {
       const { done, value } = await reader.read()
@@ -295,38 +248,22 @@ const handleSend = async () => {
           const data = trimmedLine.substring(5).trim()
           if (data) {
             botContent += data
+            const msg = messages.value.find(m => m.id === botMsgId)
+            if (msg) {
+              msg.content = botContent
+            }
           }
         }
       }
-
-      // 定期更新视图
-      const now = Date.now()
-      if (now - lastRenderTime > RENDER_DELAY) {
-        const msg = messages.value.find(m => m.id === botMsgId)
-        if (msg) {
-          msg.content = botContent
-          msg.renderedContent = renderMarkdown(botContent)
-        }
-        lastRenderTime = now
-        scrollToBottom()
-        // 不等待 nextTick，让更新异步进行
-      }
+      scrollToBottom()
     }
 
-    // 最后一次更新
-    const msg = messages.value.find(m => m.id === botMsgId)
-    if (msg) {
-      msg.content = botContent
-      msg.renderedContent = renderMarkdown(botContent)
-    }
     await nextTick()
-    scrollToBottom()
     await refreshConversations()
   } catch (error) {
     const msg = messages.value.find(m => m.id === botMsgId)
     if (msg) {
       msg.content = '❌ 请求失败：' + error.message
-      msg.renderedContent = renderMarkdown('❌ 请求失败：' + error.message)
     }
     ElMessage.error('AI 响应失败：' + error.message)
   } finally {

@@ -1,4 +1,4 @@
-/* ChatView 样式 */
+/* ChatView 样式 - 原生文本版本 */
 .chat-container {
   display: flex;
   flex-direction: column;
@@ -147,161 +147,13 @@
   border-bottom-left-radius: 4px;
 }
 
-/* Markdown 内容样式 */
-.md-content {
+/* 消息文本 - 原生样式 */
+.message-text {
   font-size: 0.95rem;
+  line-height: 1.6;
   color: #333;
-}
-
-.md-content p {
-  margin: 0.6em 0;
-  line-height: 1.8;
-}
-
-.md-content p:first-child {
-  margin-top: 0;
-}
-
-.md-content p:last-child {
-  margin-bottom: 0;
-}
-
-/* 代码块 - highlight.js 样式 */
-.md-content pre.hljs {
-  background: #282c34;
-  border-radius: 8px;
-  padding: 16px;
-  overflow-x: auto;
-  margin: 12px 0;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  border: 1px solid #1e1e1e;
-}
-
-.md-content pre.hljs code {
-  font-family: inherit;
-  background: transparent;
-  padding: 0;
-  color: inherit;
-}
-
-/* 行内代码 */
-.md-content code {
-  background: #f5f5f5;
-  color: #e83e8c;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 0.85em;
-}
-
-/* 防止 pre 内的 code 被行内代码样式覆盖 */
-.md-content pre.hljs code {
-  background: transparent;
-  padding: 0;
-  color: inherit;
-}
-
-/* 列表 */
-.md-content ul,
-.md-content ol {
-  padding-left: 24px;
-  margin: 8px 0;
-}
-
-.md-content li {
-  margin: 4px 0;
-}
-
-/* 引用 */
-.md-content blockquote {
-  border-left: 4px solid #667EEA;
-  padding-left: 16px;
-  margin: 12px 0;
-  color: #666;
-  background: #f9f9f9;
-  padding: 12px 16px;
-  border-radius: 8px;
-}
-
-/* 表格 */
-.md-content table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 12px 0;
-  font-size: 0.9rem;
-  display: block;
-  overflow-x: auto;
-}
-
-.md-content th,
-.md-content td {
-  padding: 10px 12px;
-  border: 1px solid #e8e8e8;
-}
-
-.md-content th {
-  background: #f5f5f5;
-  font-weight: 600;
-  text-align: left;
-}
-
-/* 标题 */
-.md-content h1,
-.md-content h2,
-.md-content h3,
-.md-content h4,
-.md-content h5,
-.md-content h6 {
-  margin: 16px 0 10px 0;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #1a1a1a;
-}
-
-.md-content h1 {
-  font-size: 1.4rem;
-  border-bottom: 2px solid #e8e8e8;
-  padding-bottom: 8px;
-}
-
-.md-content h2 {
-  font-size: 1.2rem;
-  border-bottom: 1px solid #e8e8e8;
-  padding-bottom: 6px;
-}
-
-.md-content h3 {
-  font-size: 1.05rem;
-}
-
-.md-content h4 {
-  font-size: 1rem;
-}
-
-/* 链接 */
-.md-content a {
-  color: #667EEA;
-  text-decoration: none;
-}
-
-.md-content a:hover {
-  text-decoration: underline;
-}
-
-/* 图片 */
-.md-content img {
-  max-width: 100%;
-  border-radius: 8px;
-  margin: 8px 0;
-}
-
-/* 水平线 */
-.md-content hr {
-  border: none;
-  border-top: 1px solid #e8e8e8;
-  margin: 16px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* 消息元信息 */
