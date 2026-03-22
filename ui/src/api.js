@@ -79,7 +79,7 @@ export const getConversationMessages = async (id) => {
 }
 
 // ========== AI 对话 ==========
-// 使用 fetch API 读取流式响应
+// 使用 fetch API 读取流式响应 (SSE 格式)
 export const chatByStream = async (question, conversationId, useRag) => {
   const url = useRag ? '/ai/chatByRag' : '/ai/chat'
   const response = await fetch(url, {
@@ -100,6 +100,32 @@ export const chatByStream = async (question, conversationId, useRag) => {
   }
 
   return response
+}
+
+// 读取 SSE 流中的文本内容
+export const readSSEStream = async (response, onChunk) => {
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const trimmedLine = line.trim()
+      if (trimmedLine.startsWith('data:') && trimmedLine !== 'data:[DONE]') {
+        const data = trimmedLine.substring(5).trim()
+        if (data) {
+          onChunk(data)
+        }
+      }
+    }
+  }
 }
 
 export default api

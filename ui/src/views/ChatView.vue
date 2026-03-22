@@ -230,33 +230,15 @@ const handleSend = async () => {
 
   try {
     const response = await api.chatByStream(content, currentConvId.value, useRag.value)
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmedLine = line.trim()
-        if (trimmedLine.startsWith('data:') && trimmedLine !== 'data:[DONE]') {
-          const data = trimmedLine.substring(5).trim()
-          if (data) {
-            botContent += data
-            const msg = messages.value.find(m => m.id === botMsgId)
-            if (msg) {
-              msg.content = botContent
-            }
-          }
-        }
+    
+    // 使用 SSE 流读取
+    await api.readSSEStream(response, (data) => {
+      botContent += data
+      const msg = messages.value.find(m => m.id === botMsgId)
+      if (msg) {
+        msg.content = botContent
       }
-      scrollToBottom()
-    }
+    })
 
     await nextTick()
     await refreshConversations()
