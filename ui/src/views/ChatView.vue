@@ -230,7 +230,7 @@ const handleSend = async () => {
 
   try {
     const response = await api.chatByStream(content, currentConvId.value, useRag.value)
-    
+
     // 使用 SSE 流读取
     await api.readSSEStream(response, (data) => {
       botContent += data
@@ -238,6 +238,8 @@ const handleSend = async () => {
       if (msg) {
         msg.content = botContent
       }
+      // 每次更新后滚动
+      scrollToBottom()
     })
 
     await nextTick()

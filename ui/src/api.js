@@ -126,6 +126,8 @@ export const readSSEStream = async (response, onChunk) => {
       }
     }
   }
+  
+  return buffer
 }
 
 export default api
