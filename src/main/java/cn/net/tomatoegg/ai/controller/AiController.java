@@ -52,7 +52,8 @@ public class AiController {
         UUID conversationId = (conversationIdStr != null && !conversationIdStr.isBlank()) 
                 ? UUID.fromString(conversationIdStr) 
                 : null;
-        return aiService.chatByStream(question, conversationId, "qwen")
+        String model = (String) request.getOrDefault("model", "qwen");
+        return aiService.chatByStream(question, conversationId, model)
                 .map(text -> ServerSentEvent.builder(text).build());
     }
 
@@ -94,6 +95,12 @@ public class AiController {
     @GetMapping("/ai/documents")
     public Object getDocuments(@RequestParam(value = "kbId", required = false) UUID kbId) {
         return knowledgeBaseService.getDocumentList(kbId);
+    }
+
+    @DeleteMapping("/ai/documents/{id}")
+    public Map<String, Object> deleteDocument(@PathVariable("id") UUID id) {
+        knowledgeBaseService.deleteDocument(id);
+        return Map.of("ok", true);
     }
 
     /**
@@ -152,8 +159,17 @@ public class AiController {
     }
 
     @PutMapping("/ai/conversations/{id}/title")
-    public Map<String, Object> renameConversation(@PathVariable("id") UUID id, @RequestParam("title") String title) {
-        conversationService.renameConversation(id, title);
+    public Map<String, Object> renameConversation(@PathVariable("id") UUID id,
+                                                  @RequestBody(required = false) Map<String, String> body,
+                                                  @RequestParam(value = "title", required = false) String title) {
+        String resolvedTitle = title;
+        if ((resolvedTitle == null || resolvedTitle.isBlank()) && body != null) {
+            resolvedTitle = body.get("title");
+        }
+        if (resolvedTitle == null || resolvedTitle.isBlank()) {
+            throw new IllegalArgumentException("title must not be blank");
+        }
+        conversationService.renameConversation(id, resolvedTitle);
         return Map.of("ok", true);
     }
 

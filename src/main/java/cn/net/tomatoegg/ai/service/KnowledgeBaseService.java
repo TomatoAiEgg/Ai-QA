@@ -91,7 +91,9 @@ public class KnowledgeBaseService {
             // 4. 添加元数据
             for (int i = 0; i < splitDocuments.size(); i++) {
                 Document doc = splitDocuments.get(i);
+                doc.getMetadata().put("doc_id", docRecord.getId().toString());
                 doc.getMetadata().put("filename", file.getOriginalFilename());
+                doc.getMetadata().put("file_hash", docRecord.getFileHash());
                 doc.getMetadata().put("uploadTime", System.currentTimeMillis());
                 doc.getMetadata().put("kb_id", kbId != null ? kbId.toString() : "default");
                 doc.getMetadata().put("chunkIndex", i);
@@ -102,8 +104,14 @@ public class KnowledgeBaseService {
             Map<String, Object> stats = analyzeChunks(splitDocuments, totalOriginalChars);
             log.info("文档切片统计：{}", stats);
 
-            // 6. 存入向量数据库
-            vectorStore.add(splitDocuments);
+            // 6. 分批存入向量数据库（通义千问 API 限制每次最多 10 个）
+            int batchSize = 10;
+            for (int i = 0; i < splitDocuments.size(); i += batchSize) {
+                int end = Math.min(i + batchSize, splitDocuments.size());
+                List<Document> batch = splitDocuments.subList(i, end);
+                log.info("正在处理批次 {}/{} ({} 个片段)", (i / batchSize) + 1, (splitDocuments.size() + batchSize - 1) / batchSize, batch.size());
+                vectorStore.add(batch);
+            }
 
             // 7. 更新文档记录
             documentRepository.updateChunkCount(docRecord.getId(), splitDocuments.size());
@@ -146,6 +154,11 @@ public class KnowledgeBaseService {
                 .topK(topK)
                 .similarityThreshold(0.6)
                 .build();
+        if (kbId != null) {
+            request = SearchRequest.from(request)
+                    .filterExpression("kb_id == '" + kbId + "'")
+                    .build();
+        }
 
         return vectorStore.similaritySearch(request);
     }
@@ -172,14 +185,22 @@ public class KnowledgeBaseService {
         KnowledgeBaseDocument doc = documentRepository.findById(docId)
                 .orElseThrow(() -> new RuntimeException("文档记录不存在：" + docId));
 
-        // 从向量库中删除相关片段（通过元数据过滤）
-        // 注意：Spring AI VectorStore 不直接支持删除，需要通过 JdbcTemplate 操作
-        String deleteSql = "DELETE FROM vector_store_1024 WHERE metadata->>'filename' = ?";
-        jdbcTemplate.update(deleteSql, doc.getFilename());
+        deleteVectorsByDocumentId(docId);
 
         // 删除文档记录
         documentRepository.delete(docId);
         log.info("删除文档：{} (kbId: {})", doc.getFilename(), doc.getKbId());
+    }
+
+    public void deleteKnowledgeBaseVectors(UUID kbId) {
+        String deleteSql = "DELETE FROM vector_store_1024 WHERE metadata->>'kb_id' = ?";
+        jdbcTemplate.update(deleteSql, kbId.toString());
+        log.info("删除知识库向量数据：{}", kbId);
+    }
+
+    private void deleteVectorsByDocumentId(UUID docId) {
+        String deleteSql = "DELETE FROM vector_store_1024 WHERE metadata->>'doc_id' = ?";
+        jdbcTemplate.update(deleteSql, docId.toString());
     }
 
     /**

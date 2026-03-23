@@ -1,6 +1,7 @@
 package cn.net.tomatoegg.ai.repository;
 
 import cn.net.tomatoegg.ai.entity.KnowledgeBase;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -24,6 +25,23 @@ import java.util.UUID;
 public class KnowledgeBaseRepository {
 
     private final JdbcTemplate jdbcTemplate;
+
+    @PostConstruct
+    void initSchema() {
+        jdbcTemplate.execute(
+            "CREATE TABLE IF NOT EXISTS knowledge_bases (" +
+            "  id UUID PRIMARY KEY," +
+            "  name VARCHAR(255) NOT NULL," +
+            "  description TEXT," +
+            "  cover_color VARCHAR(32)," +
+            "  created_by UUID," +
+            "  is_public BOOLEAN NOT NULL DEFAULT FALSE," +
+            "  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()," +
+            "  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()" +
+            ")"
+        );
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_bases_created_at ON knowledge_bases(created_at DESC)");
+    }
 
     /**
      * 创建知识库

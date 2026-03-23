@@ -50,7 +50,7 @@
           </div>
           <div class="message-content">
             <div :class="['message-bubble', msg.role]">
-              <div class="message-text">{{ msg.content }}</div>
+              <div class="message-text markdown-body" v-html="renderMarkdown(msg.content, msg.id === 'streaming')"></div>
             </div>
             <div class="message-meta">
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
@@ -78,6 +78,21 @@
           <span class="switch-toggle"></span>
           <span class="switch-label">RAG 知识库</span>
         </label>
+        <el-select
+          v-if="useRag"
+          v-model="selectedKbId"
+          placeholder="全部知识库"
+          size="small"
+          clearable
+          class="kb-select"
+        >
+          <el-option
+            v-for="kb in knowledgeBases"
+            :key="kb.id"
+            :label="kb.name"
+            :value="kb.id"
+          />
+        </el-select>
         <el-select v-model="model" placeholder="选择模型" size="small" class="model-select">
           <el-option label="千问" value="qwen" />
           <el-option label="DeepSeek" value="deepseek" disabled />
@@ -111,10 +126,91 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, inject, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, inject, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as api from '../api.js'
 import { Promotion, DocumentCopy, Check } from '@element-plus/icons-vue'
+import { marked } from 'marked'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github.css'
+
+// 配置 marked 使用 highlight.js 进行代码高亮
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return hljs.highlight(code, { language: lang }).value
+      } catch (e) {
+        return hljs.highlightAuto(code).value
+      }
+    }
+    return hljs.highlightAuto(code).value
+  },
+  breaks: true,
+  gfm: true,
+  silent: true
+})
+
+// 流式 Markdown 渲染器 - 在流式传输过程中使用
+function streamingMarkdownRender(text) {
+  if (!text) return ''
+
+  // 转义 HTML 防止 XSS
+  let escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // 代码块 ```code``` (优先处理，避免内容被转义)
+  let codeBlocks = []
+  escaped = escaped.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    const language = lang || 'plaintext'
+    const index = codeBlocks.length
+    // 添加 hljs 类名以应用高亮样式
+    codeBlocks.push(`<pre><code class="language-${language} hljs">${code.trim()}</code></pre>`)
+    return `%%CODEBLOCK${index}%%`
+  })
+
+  // 行内代码 `code`
+  escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+  // 粗体 **text**
+  escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+
+  // 斜体 *text*
+  escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+
+  // 标题
+  escaped = escaped.replace(/^### (.*$)/gim, '<h3>$1</h3>')
+  escaped = escaped.replace(/^## (.*$)/gim, '<h2>$1</h2>')
+  escaped = escaped.replace(/^# (.*$)/gim, '<h1>$1</h1>')
+
+  // 引用
+  escaped = escaped.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
+
+  // 有序列表
+  escaped = escaped.replace(/^\s*\d+\.\s+(.*$)/gim, '<li>$1</li>')
+
+  // 无序列表
+  escaped = escaped.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>')
+
+  // 链接 [text](url)
+  escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+
+  // 换行（段落之间用</p><p>，行内用<br>）
+  escaped = escaped.replace(/\n\n/g, '</p><p>')
+  escaped = escaped.replace(/\n/g, '<br>')
+
+  // 包裹在 p 标签中
+  escaped = '<p>' + escaped + '</p>'
+
+  // 恢复代码块
+  codeBlocks.forEach((block, index) => {
+    escaped = escaped.replace(`%%CODEBLOCK${index}%%`, block)
+  })
+
+  return escaped
+}
 
 const messagesContainer = ref(null)
 const question = ref('')
@@ -122,6 +218,8 @@ const messages = ref([])
 const isBotResponding = ref(false)
 const useRag = ref(false)
 const model = ref('qwen')
+const knowledgeBases = ref([])
+const selectedKbId = ref(null)
 
 const currentConvId = inject('currentConvId', ref(null))
 const refreshConversations = inject('refreshConversations', () => {})
@@ -130,10 +228,14 @@ const loadAndSelectFirstConversation = inject('loadAndSelectFirstConversation', 
 const handleConversationChange = (event) => {
   const { id } = event.detail
   currentConvId.value = id
-  if (id) {
-    loadMessages(id)
-  } else {
-    messages.value = []
+  // 只有在没有正在响应的消息时才加载历史消息
+  // 这样可以避免覆盖 useSuggestion 中刚添加的消息
+  if (!isBotResponding.value) {
+    if (id) {
+      loadMessages(id)
+    } else {
+      messages.value = []
+    }
   }
 }
 
@@ -145,6 +247,7 @@ const handleNewConversation = () => {
 onMounted(() => {
   window.addEventListener('conversation-change', handleConversationChange)
   window.addEventListener('new-conversation', handleNewConversation)
+  loadKnowledgeBases()
 })
 
 onUnmounted(() => {
@@ -154,18 +257,96 @@ onUnmounted(() => {
 
 const canSend = computed(() => question.value.trim().length > 0)
 
-const useSuggestion = async (text) => {
+const loadKnowledgeBases = async () => {
   try {
+    knowledgeBases.value = await api.getKnowledgeBases()
+  } catch (error) {
+    console.error('加载知识库失败:', error)
+  }
+}
+
+const useSuggestion = async (text) => {
+  let streamingMsg = null
+  try {
+    // 1. 创建新对话
     const conv = await api.createConversation()
     currentConvId.value = conv.id
+
+    // 2. 刷新侧边栏对话列表
     await refreshConversations()
-    window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: conv.id } }))
+
+    // 3. 先清空消息数组（确保从欢迎页面切换出来）
+    messages.value = []
+
+    // 4. 设置问题
     question.value = text
     await nextTick()
-    await handleSend()
+
+    // 5. 直接执行 handleSend 的逻辑（不依赖 canSend）
+    const content = question.value.trim()
+    question.value = ''
+
+    // 添加用户消息
+    messages.value.push({
+      id: `user-${Date.now()}`,
+      content,
+      role: 'user',
+      timestamp: new Date().toISOString(),
+      copied: false
+    })
+
+    // 创建流式消息对象 - 使用 ref 确保响应式
+    const botMsgId = 'streaming'
+    streamingMsg = reactive({
+      id: botMsgId,
+      content: '',
+      role: 'bot',
+      timestamp: new Date().toISOString(),
+      copied: false
+    })
+    messages.value.push(streamingMsg)
+
+    isBotResponding.value = true
+    await nextTick()
+    scrollToBottom(true)
+
+    // 发送请求
+    const response = await api.chatByStream(content, currentConvId.value, {
+      useRag: useRag.value,
+      model: model.value,
+      kbId: selectedKbId.value
+    })
+
+    await api.readSSEStream(response, async (data) => {
+      streamingMsg.content += data
+      await nextTick()
+      scrollToBottom()
+    })
+
+    streamingMsg.id = `bot-${Date.now()}`
+    isBotResponding.value = false
+
+    // 发送 conversation-change 事件，让侧边栏选中当前对话（在完成后）
+    window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id: conv.id } }))
+
+    await nextTick()
+    await refreshConversations()
+    scrollToBottom(true)
   } catch (error) {
+    if (streamingMsg?.value) {
+      streamingMsg.content = streamingMsg.content || ('❌ 请求失败：' + error.message)
+      streamingMsg.id = `bot-${Date.now()}`
+    }
     ElMessage.error('创建对话失败：' + error.message)
+  } finally {
+    isBotResponding.value = false
   }
+}
+
+// 选择历史对话
+const selectConversation = (id) => {
+  currentConvId.value = id
+  window.dispatchEvent(new CustomEvent('conversation-change', { detail: { id } }))
 }
 
 const loadMessages = async (convId) => {
@@ -206,6 +387,7 @@ const handleSend = async () => {
     }
   }
 
+  // 使用 shallowRef 存储消息数组，确保响应式更新
   messages.value.push({
     id: `user-${Date.now()}`,
     content,
@@ -214,41 +396,45 @@ const handleSend = async () => {
     copied: false
   })
 
-  const botMsgId = `bot-${Date.now()}`
-  let botContent = ''
-  messages.value.push({
+  // 创建流式消息对象 - 使用 ref 包装整个对象以确保响应式
+  const botMsgId = 'streaming'
+  const streamingMsg = reactive({
     id: botMsgId,
     content: '',
     role: 'bot',
     timestamp: new Date().toISOString(),
     copied: false
   })
+  messages.value.push(streamingMsg)
 
   isBotResponding.value = true
   await nextTick()
   scrollToBottom(true)
 
   try {
-    const response = await api.chatByStream(content, currentConvId.value, useRag.value)
+    const response = await api.chatByStream(content, currentConvId.value, {
+      useRag: useRag.value,
+      model: model.value,
+      kbId: selectedKbId.value
+    })
 
     // 使用 SSE 流读取
-    await api.readSSEStream(response, (data) => {
-      botContent += data
-      const msg = messages.value.find(m => m.id === botMsgId)
-      if (msg) {
-        msg.content = botContent
-      }
-      // 每次更新后滚动
+    await api.readSSEStream(response, async (data) => {
+      // 直接更新 content，Vue 3 会检测到变化
+      streamingMsg.content += data
+      // 使用 nextTick 确保 DOM 更新后再滚动
+      await nextTick()
       scrollToBottom()
     })
+
+    // 流式传输完成，将 streaming 消息改为正式 ID
+    streamingMsg.id = `bot-${Date.now()}`
 
     await nextTick()
     await refreshConversations()
   } catch (error) {
-    const msg = messages.value.find(m => m.id === botMsgId)
-    if (msg) {
-      msg.content = '❌ 请求失败：' + error.message
-    }
+    streamingMsg.content = '❌ 请求失败：' + error.message
+    streamingMsg.id = `bot-${Date.now()}`
     ElMessage.error('AI 响应失败：' + error.message)
   } finally {
     isBotResponding.value = false
@@ -274,6 +460,22 @@ const formatTime = (timestamp) => {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+// 渲染 Markdown - 流式传输时使用简单渲染，完成后使用完整渲染
+const renderMarkdown = (content, isStreaming = false) => {
+  if (!content) return ''
+  try {
+    // 流式传输过程中使用简单渲染
+    if (isStreaming) {
+      return marked.parse(content)
+    }
+    // 流式完成后使用完整的 marked 渲染（带代码高亮）
+    return marked.parse(content)
+  } catch (error) {
+    console.error('Markdown 解析失败:', error)
+    return content
+  }
+}
+
 const scrollToBottom = (force = false) => {
   setTimeout(() => {
     if (messagesContainer.value) {
@@ -290,6 +492,17 @@ const scrollToBottom = (force = false) => {
 }
 </script>
 
-<style scoped>
+<style>
+/* 全局导入 chat.css，确保 markdown 样式能应用到 v-html 内容 */
 @import '../styles/chat.css';
+</style>
+
+<style scoped>
+/* 仅作用于当前组件的样式 */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
 </style>

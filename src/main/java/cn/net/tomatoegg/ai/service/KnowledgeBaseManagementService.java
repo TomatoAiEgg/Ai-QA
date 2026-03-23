@@ -25,6 +25,7 @@ public class KnowledgeBaseManagementService {
 
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final KnowledgeBaseDocumentRepository documentRepository;
+    private final KnowledgeBaseService knowledgeBaseService;
 
     /**
      * 创建知识库
@@ -74,6 +75,7 @@ public class KnowledgeBaseManagementService {
      * 删除知识库（级联删除文档记录）
      */
     public void deleteKnowledgeBase(UUID id) {
+        knowledgeBaseService.deleteKnowledgeBaseVectors(id);
         // 先删除关联的文档记录
         documentRepository.deleteByKbId(id);
         // 再删除知识库

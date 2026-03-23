@@ -1,6 +1,7 @@
 package cn.net.tomatoegg.ai.repository;
 
 import cn.net.tomatoegg.ai.entity.KnowledgeBaseDocument;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -24,6 +25,26 @@ import java.util.UUID;
 public class KnowledgeBaseDocumentRepository {
 
     private final JdbcTemplate jdbcTemplate;
+
+    @PostConstruct
+    void initSchema() {
+        jdbcTemplate.execute(
+            "CREATE TABLE IF NOT EXISTS knowledge_base_documents (" +
+            "  id UUID PRIMARY KEY," +
+            "  kb_id UUID REFERENCES knowledge_bases(id) ON DELETE CASCADE," +
+            "  filename VARCHAR(512) NOT NULL," +
+            "  file_hash VARCHAR(128)," +
+            "  file_size BIGINT," +
+            "  chunk_count INTEGER NOT NULL DEFAULT 0," +
+            "  status VARCHAR(32) NOT NULL," +
+            "  error_message TEXT," +
+            "  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()," +
+            "  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()" +
+            ")"
+        );
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_kb_documents_kb_id ON knowledge_base_documents(kb_id)");
+        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_kb_documents_created_at ON knowledge_base_documents(created_at DESC)");
+    }
 
     /**
      * 创建文档关联记录

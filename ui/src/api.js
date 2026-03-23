@@ -80,7 +80,8 @@ export const getConversationMessages = async (id) => {
 
 // ========== AI 对话 ==========
 // 使用 fetch API 读取流式响应 (SSE 格式)
-export const chatByStream = async (question, conversationId, useRag) => {
+export const chatByStream = async (question, conversationId, options = {}) => {
+  const { useRag = false, model = 'qwen', kbId = null } = options
   const url = useRag ? '/ai/chatByRag' : '/ai/chat'
   const response = await fetch(url, {
     method: 'POST',
@@ -90,7 +91,9 @@ export const chatByStream = async (question, conversationId, useRag) => {
     body: JSON.stringify({
       question,
       conversationId: conversationId || null,
-      useRag: useRag || false
+      useRag,
+      model,
+      kbId
     })
   })
 
@@ -107,26 +110,64 @@ export const readSSEStream = async (response, onChunk) => {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let eventDataLines = []
+
+  const flushEvent = () => {
+    if (!eventDataLines.length) {
+      return
+    }
+    const data = eventDataLines.join('\n')
+    eventDataLines = []
+    if (data && data !== '[DONE]') {
+      onChunk(data)
+    }
+  }
 
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
+    if (done) {
+      break
+    }
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
+    const text = decoder.decode(value, { stream: true })
+    buffer += text
+
+    // 按行分割处理 SSE 数据
+    const lines = buffer.split(/\r\n|\r|\n/)
     buffer = lines.pop() || ''
 
     for (const line of lines) {
-      const trimmedLine = line.trim()
-      if (trimmedLine.startsWith('data:') && trimmedLine !== 'data:[DONE]') {
-        const data = trimmedLine.substring(5).trim()
-        if (data) {
-          onChunk(data)
+      // 空行表示一个 SSE 事件结束
+      if (line === '') {
+        flushEvent()
+        continue
+      }
+
+      // 跳过注释行
+      if (line.startsWith(':')) {
+        continue
+      }
+
+      if (line.startsWith('data:')) {
+        let data = line.substring(5)
+        if (data.startsWith(' ')) {
+          data = data.substring(1)
         }
+        eventDataLines.push(data)
       }
     }
   }
-  
+
+  if (buffer.startsWith('data:')) {
+    let data = buffer.substring(5)
+    if (data.startsWith(' ')) {
+      data = data.substring(1)
+    }
+    eventDataLines.push(data)
+  }
+
+  flushEvent()
+
   return buffer
 }
 
