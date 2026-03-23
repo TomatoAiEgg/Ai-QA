@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   susan-ai-pgvector:
     image: pgvector/pgvector:pg16
@@ -14,5 +12,16 @@ services:
       - susan-ai-pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
+  susan-ai-redis:
+    image: redis:7-alpine
+    container_name: susan-ai-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - susan-ai-redis-data:/data
+    restart: unless-stopped
+
 volumes:
   susan-ai-pgdata:
+  susan-ai-redis-data:

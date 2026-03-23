@@ -81,9 +81,8 @@
         <el-select
           v-if="useRag"
           v-model="selectedKbId"
-          placeholder="全部知识库"
+          placeholder="请选择知识库"
           size="small"
-          clearable
           class="kb-select"
         >
           <el-option
@@ -260,14 +259,28 @@ const canSend = computed(() => question.value.trim().length > 0)
 const loadKnowledgeBases = async () => {
   try {
     knowledgeBases.value = await api.getKnowledgeBases()
+    if (!selectedKbId.value && knowledgeBases.value.length > 0) {
+      selectedKbId.value = knowledgeBases.value[0].id
+    }
   } catch (error) {
     console.error('加载知识库失败:', error)
   }
 }
 
+const ensureRagSelection = () => {
+  if (!useRag.value || selectedKbId.value) {
+    return true
+  }
+  ElMessage.error('请先选择知识库')
+  return false
+}
+
 const useSuggestion = async (text) => {
   let streamingMsg = null
   try {
+    if (!ensureRagSelection()) {
+      return
+    }
     // 1. 创建新对话
     const conv = await api.createConversation()
     currentConvId.value = conv.id
@@ -372,6 +385,7 @@ const loadMessages = async (convId) => {
 
 const handleSend = async () => {
   if (!canSend.value || isBotResponding.value) return
+  if (!ensureRagSelection()) return
 
   const content = question.value.trim()
   question.value = ''

@@ -22,6 +22,9 @@ public class Conversation {
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
 
+    @TableField("user_id")
+    private UUID userId;
+
     private String title;
 
     @TableField("created_at")

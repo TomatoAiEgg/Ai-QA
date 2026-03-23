@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,46 +13,25 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/**
- * 知识库文档关联实体
- *
- * @author 苏三
- * @date 2026/3/17
- */
-@TableName("knowledge_base_documents")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class KnowledgeBaseDocument {
+@TableName("app_users")
+public class AppUser {
 
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
 
-    @TableField("kb_id")
-    private UUID kbId;
+    private String email;
 
-    @TableField("user_id")
-    private UUID userId;
+    private String phone;
 
-    private String filename;
+    @JsonIgnore
+    @TableField("password_hash")
+    private String passwordHash;
 
-    @TableField("storage_path")
-    private String storagePath;
-
-    @TableField("file_hash")
-    private String fileHash;
-
-    @TableField("file_size")
-    private Long fileSize;
-
-    @TableField("chunk_count")
-    private Integer chunkCount;
-
-    private String status;
-
-    @TableField("error_message")
-    private String errorMessage;
+    private String nickname;
 
     @TableField("created_at")
     private OffsetDateTime createdAt;

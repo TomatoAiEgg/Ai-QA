@@ -43,18 +43,18 @@ public class AiService {
         this.chatClient = chatClientBuilder.build();
     }
 
-    public Flux<String> chatByRag(String question, UUID conversationId, UUID kbId, String model) {
+    public Flux<String> chatByRag(String question, UUID userId, UUID conversationId, UUID kbId, String model) {
         log.info("收到 RAG 对话请求，问题: {}, kbId: {}, model: {}", question, kbId, model);
 
         if (conversationId != null) {
-            conversationService.addUserMessage(conversationId, question);
+            conversationService.addUserMessage(userId, conversationId, question);
         }
 
-        List<Document> documents = knowledgeBaseService.searchFromKnowledgeBase(question, kbId, 5);
+        List<Document> documents = knowledgeBaseService.searchFromKnowledgeBase(question, kbId, 5, userId);
         if (documents.isEmpty()) {
             String fallback = "抱歉，知识库中没有找到相关信息。";
             if (conversationId != null) {
-                conversationService.addAssistantMessage(conversationId, fallback);
+                conversationService.addAssistantMessage(userId, conversationId, fallback);
             }
             return Flux.just(fallback);
         }
@@ -62,15 +62,15 @@ public class AiService {
         if (rerankService.isEnabled()) {
             documents = rerankService.rerank(question, documents);
             if (documents.isEmpty()) {
-                String fallback = "抱歉，知识库中没有找到与您的问题高度相关的信息。";
+                String fallback = "抱歉，知识库中没有找到与你的问题高度相关的信息。";
                 if (conversationId != null) {
-                    conversationService.addAssistantMessage(conversationId, fallback);
+                    conversationService.addAssistantMessage(userId, conversationId, fallback);
                 }
                 return Flux.just(fallback);
             }
         }
 
-        String history = buildHistory(conversationId);
+        String history = buildHistory(userId, conversationId);
         String context = documents.stream().map(Document::getContent).collect(Collectors.joining("\n\n"));
         String userPrompt = "【历史对话】\n" + history + "\n\n【上下文信息】\n" + context + "\n\n【用户问题】\n" + question;
         String composed = RAG_SYSTEM_PROMPT + "\n\n" + userPrompt;
@@ -81,19 +81,19 @@ public class AiService {
                 .doOnNext(responseBuilder::append)
                 .doOnComplete(() -> {
                     if (conversationId != null) {
-                        conversationService.addAssistantMessage(conversationId, responseBuilder.toString());
+                        conversationService.addAssistantMessage(userId, conversationId, responseBuilder.toString());
                     }
                     log.info("RAG 对话完成: {}", responseBuilder);
                 });
     }
 
-    public Flux<String> chatByStream(String question, UUID conversationId, String model) {
+    public Flux<String> chatByStream(String question, UUID userId, UUID conversationId, String model) {
         log.info("收到普通 AI 对话请求，问题: {}, model: {}", question, model);
         if (conversationId != null) {
-            conversationService.addUserMessage(conversationId, question);
+            conversationService.addUserMessage(userId, conversationId, question);
         }
 
-        String history = buildHistory(conversationId);
+        String history = buildHistory(userId, conversationId);
         String composed = NORMAL_SYSTEM_PROMPT + "\n\n【历史对话】\n" + history + "\n\n【用户问题】\n" + question;
 
         StringBuilder fullReply = new StringBuilder();
@@ -102,17 +102,17 @@ public class AiService {
                 .doOnNext(fullReply::append)
                 .doOnComplete(() -> {
                     if (conversationId != null) {
-                        conversationService.addAssistantMessage(conversationId, fullReply.toString());
+                        conversationService.addAssistantMessage(userId, conversationId, fullReply.toString());
                     }
                     log.info("普通对话完成: {}", fullReply);
                 });
     }
 
-    private String buildHistory(UUID conversationId) {
+    private String buildHistory(UUID userId, UUID conversationId) {
         if (conversationId == null) {
             return "";
         }
-        return conversationService.listRecentMessages(conversationId, 20).stream()
+        return conversationService.listRecentMessages(userId, conversationId, 20).stream()
                 .map(message -> (message.getRole().equalsIgnoreCase("USER") ? "用户" : "助手") + ": " + message.getContent())
                 .collect(Collectors.joining("\n"));
     }

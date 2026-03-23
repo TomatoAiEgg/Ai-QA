@@ -1,97 +1,145 @@
 import axios from 'axios'
+import { getStoredTokenHeaders } from './auth-storage.js'
 
 const api = axios.create({
   baseURL: '',
-  timeout: 60000
+  timeout: 60000,
+  withCredentials: true
 })
 
-// ========== 知识库管理 ==========
+const redirectToLogin = () => {
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+
+const extractErrorMessage = (error) => {
+  return error?.response?.data?.message || error?.message || '请求失败'
+}
+
+const unwrapResult = (response) => {
+  const body = response?.data
+  if (body && typeof body === 'object' && 'code' in body && 'message' in body) {
+    if (body.code !== 200) {
+      throw new Error(body.message || '请求失败')
+    }
+    return body.data
+  }
+  return body
+}
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    const status = error?.response?.status
+    const url = error?.config?.url || ''
+    const isAuthRequest = url.startsWith('/api/auth/')
+    if (status === 401 && !isAuthRequest) {
+      redirectToLogin()
+    }
+    return Promise.reject(new Error(extractErrorMessage(error)))
+  }
+)
+
+api.interceptors.request.use((config) => {
+  const tokenHeaders = getStoredTokenHeaders()
+  config.headers = {
+    ...(config.headers || {}),
+    ...tokenHeaders
+  }
+  return config
+})
+
+export const register = async ({ email = '', phone = '', password, nickname = '' }) => {
+  return unwrapResult(await api.post('/api/auth/register', { email, phone, password, nickname }))
+}
+
+export const login = async (account, password) => {
+  return unwrapResult(await api.post('/api/auth/login', { account, password }))
+}
+
+export const logout = async () => {
+  return unwrapResult(await api.post('/api/auth/logout'))
+}
+
+export const getAuthSession = async () => {
+  return unwrapResult(await api.get('/api/auth/session'))
+}
+
 export const getKnowledgeBases = async () => {
-  const res = await api.get('/api/knowledge-bases')
-  return res.data
+  return unwrapResult(await api.get('/api/knowledge-bases'))
 }
 
 export const createKnowledgeBase = async (name, description) => {
-  const res = await api.post('/api/knowledge-bases', { name, description })
-  return res.data
+  return unwrapResult(await api.post('/api/knowledge-bases', { name, description }))
 }
 
 export const updateKnowledgeBase = async (id, name, description) => {
-  const res = await api.put(`/api/knowledge-bases/${id}`, { name, description })
-  return res.data
+  return unwrapResult(await api.put(`/api/knowledge-bases/${id}`, { name, description }))
 }
 
 export const deleteKnowledgeBase = async (id) => {
-  await api.delete(`/api/knowledge-bases/${id}`)
+  return unwrapResult(await api.delete(`/api/knowledge-bases/${id}`))
 }
 
 export const getKnowledgeBase = async (id) => {
-  const res = await api.get(`/api/knowledge-bases/${id}`)
-  return res.data
+  return unwrapResult(await api.get(`/api/knowledge-bases/${id}`))
 }
 
-// ========== 文档管理 ==========
 export const getDocumentsByKbId = async (kbId) => {
-  const res = await api.get(`/api/knowledge-bases/${kbId}/documents`)
-  return res.data
+  return unwrapResult(await api.get(`/api/knowledge-bases/${kbId}/documents`))
 }
 
 export const uploadDocument = async (file, kbId) => {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('kbId', kbId)
-  const res = await api.post('/ai/upload', formData, {
+  return unwrapResult(await api.post('/ai/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
-  })
-  return res.data
+  }))
 }
 
 export const previewChunks = async (file) => {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await api.post('/ai/preview-chunks', formData, {
+  return unwrapResult(await api.post('/ai/preview-chunks', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
-  })
-  return res.data
+  }))
 }
 
 export const deleteDocument = async (id) => {
-  await api.delete(`/ai/documents/${id}`)
+  return unwrapResult(await api.delete(`/ai/documents/${id}`))
 }
 
-// ========== 对话管理 ==========
 export const getConversations = async () => {
-  const res = await api.get('/ai/conversations')
-  return res.data
+  return unwrapResult(await api.get('/ai/conversations'))
 }
 
 export const createConversation = async () => {
-  const res = await api.post('/ai/conversations')
-  return res.data
+  return unwrapResult(await api.post('/ai/conversations'))
 }
 
 export const deleteConversation = async (id) => {
-  await api.delete(`/ai/conversations/${id}`)
+  return unwrapResult(await api.delete(`/ai/conversations/${id}`))
 }
 
 export const updateConversationTitle = async (id, title) => {
-  await api.put(`/ai/conversations/${id}/title`, { title })
+  return unwrapResult(await api.put(`/ai/conversations/${id}/title`, { title }))
 }
 
 export const getConversationMessages = async (id) => {
-  const res = await api.get(`/ai/conversations/${id}/messages`)
-  return res.data
+  return unwrapResult(await api.get(`/ai/conversations/${id}/messages`))
 }
 
-// ========== AI 对话 ==========
-// 使用 fetch API 读取流式响应 (SSE 格式)
 export const chatByStream = async (question, conversationId, options = {}) => {
   const { useRag = false, model = 'qwen', kbId = null } = options
   const url = useRag ? '/ai/chatByRag' : '/ai/chat'
   const response = await fetch(url, {
     method: 'POST',
+    credentials: 'include',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...getStoredTokenHeaders()
     },
     body: JSON.stringify({
       question,
@@ -103,14 +151,21 @@ export const chatByStream = async (question, conversationId, options = {}) => {
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      redirectToLogin()
+    }
+    const contentType = response.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const payload = await response.json()
+      throw new Error(payload?.message || `请求失败: ${response.status}`)
+    }
     const errorText = await response.text()
-    throw new Error(`请求失败：${response.status} - ${errorText}`)
+    throw new Error(errorText || `请求失败: ${response.status}`)
   }
 
   return response
 }
 
-// 读取 SSE 流中的文本内容
 export const readSSEStream = async (response, onChunk) => {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -136,23 +191,17 @@ export const readSSEStream = async (response, onChunk) => {
 
     const text = decoder.decode(value, { stream: true })
     buffer += text
-
-    // 按行分割处理 SSE 数据
     const lines = buffer.split(/\r\n|\r|\n/)
     buffer = lines.pop() || ''
 
     for (const line of lines) {
-      // 空行表示一个 SSE 事件结束
       if (line === '') {
         flushEvent()
         continue
       }
-
-      // 跳过注释行
       if (line.startsWith(':')) {
         continue
       }
-
       if (line.startsWith('data:')) {
         let data = line.substring(5)
         if (data.startsWith(' ')) {
@@ -172,13 +221,11 @@ export const readSSEStream = async (response, onChunk) => {
   }
 
   flushEvent()
-
   return buffer
 }
 
 export const previewDocument = async (id) => {
-  const res = await api.get(`/ai/documents/${id}/preview`)
-  return res.data
+  return unwrapResult(await api.get(`/ai/documents/${id}/preview`))
 }
 
 export default api

@@ -1,77 +1,102 @@
 package cn.net.tomatoegg.ai.controller;
 
-import cn.net.tomatoegg.ai.service.KnowledgeBaseManagementService;
+import cn.net.tomatoegg.ai.common.ApiCode;
+import cn.net.tomatoegg.ai.common.ResponseUtils;
 import cn.net.tomatoegg.ai.entity.KnowledgeBase;
 import cn.net.tomatoegg.ai.entity.KnowledgeBaseDocument;
+import cn.net.tomatoegg.ai.exception.BusinessException;
+import cn.net.tomatoegg.ai.service.AuthService;
+import cn.net.tomatoegg.ai.service.KnowledgeBaseManagementService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * 知识库管理控制器
- *
- * @author 苏三
- * @date 2026/3/17
- */
 @RestController
 @RequestMapping("/api/knowledge-bases")
 @RequiredArgsConstructor
 public class KnowledgeBaseController {
 
     private final KnowledgeBaseManagementService kbService;
+    private final AuthService authService;
 
-    /**
-     * 创建知识库
-     */
     @PostMapping
-    public KnowledgeBase create(@RequestBody Map<String, String> request) {
-        String name = request.get("name");
-        String description = request.getOrDefault("description", "");
-        return kbService.createKnowledgeBase(name, description);
+    public Map<String, Object> create(@RequestBody Map<String, String> request) {
+        try {
+            String name = request.get("name");
+            String description = request.getOrDefault("description", "");
+            return ResponseUtils.success(kbService.createKnowledgeBase(authService.getCurrentUserId(), name, description));
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ApiCode.KNOWLEDGE_BASE_CREATE_FAILED, ex);
+        }
     }
 
-    /**
-     * 获取知识库列表
-     */
     @GetMapping
-    public List<KnowledgeBase> list() {
-        return kbService.listKnowledgeBases();
+    public Map<String, Object> list() {
+        try {
+            return ResponseUtils.success(kbService.listKnowledgeBases(authService.getCurrentUserId()));
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ApiCode.KNOWLEDGE_BASE_LIST_FAILED, ex);
+        }
     }
 
-    /**
-     * 获取知识库详情
-     */
     @GetMapping("/{id}")
-    public KnowledgeBase get(@PathVariable UUID id) {
-        return kbService.getKnowledgeBase(id);
+    public Map<String, Object> get(@PathVariable UUID id) {
+        try {
+            return ResponseUtils.success(kbService.getKnowledgeBase(authService.getCurrentUserId(), id));
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ApiCode.KNOWLEDGE_BASE_GET_FAILED, ex);
+        }
     }
 
-    /**
-     * 更新知识库
-     */
     @PutMapping("/{id}")
-    public KnowledgeBase update(@PathVariable UUID id, @RequestBody Map<String, String> request) {
-        String name = request.get("name");
-        String description = request.get("description");
-        return kbService.updateKnowledgeBase(id, name, description);
+    public Map<String, Object> update(@PathVariable UUID id, @RequestBody Map<String, String> request) {
+        try {
+            String name = request.get("name");
+            String description = request.get("description");
+            return ResponseUtils.success(kbService.updateKnowledgeBase(authService.getCurrentUserId(), id, name, description));
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ApiCode.KNOWLEDGE_BASE_UPDATE_FAILED, ex);
+        }
     }
 
-    /**
-     * 删除知识库
-     */
     @DeleteMapping("/{id}")
-    public void delete(@PathVariable UUID id) {
-        kbService.deleteKnowledgeBase(id);
+    public Map<String, Object> delete(@PathVariable UUID id) {
+        try {
+            kbService.deleteKnowledgeBase(authService.getCurrentUserId(), id);
+            return ResponseUtils.success();
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ApiCode.KNOWLEDGE_BASE_DELETE_FAILED, ex);
+        }
     }
 
-    /**
-     * 获取知识库下的文档列表
-     */
     @GetMapping("/{id}/documents")
-    public List<KnowledgeBaseDocument> listDocuments(@PathVariable UUID id) {
-        return kbService.listDocuments(id);
+    public Map<String, Object> listDocuments(@PathVariable UUID id) {
+        try {
+            return ResponseUtils.success(kbService.listDocuments(authService.getCurrentUserId(), id));
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ApiCode.KNOWLEDGE_BASE_DOCUMENT_LIST_FAILED, ex);
+        }
     }
 }

@@ -1,13 +1,18 @@
 package cn.net.tomatoegg.ai.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.entity.KnowledgeBase;
 import cn.net.tomatoegg.ai.entity.KnowledgeBaseDocument;
+import cn.net.tomatoegg.ai.exception.BusinessException;
 import cn.net.tomatoegg.ai.mapper.KnowledgeBaseDocumentMapper;
 import cn.net.tomatoegg.ai.mapper.KnowledgeBaseMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,26 +29,39 @@ public class KnowledgeBaseManagementService {
     private final KnowledgeBaseDocumentMapper documentMapper;
     private final KnowledgeBaseService knowledgeBaseService;
 
-    public KnowledgeBase createKnowledgeBase(String name, String description) {
+    @Caching(evict = {
+            @CacheEvict(value = "knowledgeBaseListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "knowledgeBaseDetailCache", allEntries = true),
+            @CacheEvict(value = "knowledgeBaseDocumentsCache", allEntries = true),
+            @CacheEvict(value = "documentListCache", allEntries = true),
+            @CacheEvict(value = "documentPreviewCache", allEntries = true)
+    })
+    public KnowledgeBase createKnowledgeBase(UUID userId, String name, String description) {
         KnowledgeBase kb = KnowledgeBase.builder()
                 .id(UUID.randomUUID())
                 .name(name)
                 .description(description)
                 .coverColor("#4F46E5")
+                .createdBy(userId)
                 .isPublic(false)
                 .build();
         knowledgeBaseMapper.insert(kb);
-        log.info("创建知识库: {} ({})", kb.getName(), kb.getId());
+        log.info("创建知识库 {} ({})", kb.getName(), kb.getId());
         return kb;
     }
 
-    public List<KnowledgeBase> listKnowledgeBases() {
+    @Cacheable(value = "knowledgeBaseListCache", key = "#userId.toString()")
+    public List<KnowledgeBase> listKnowledgeBases(UUID userId) {
         List<KnowledgeBase> knowledgeBases = knowledgeBaseMapper.selectList(
-                new LambdaQueryWrapper<KnowledgeBase>().orderByDesc(KnowledgeBase::getCreatedAt)
+                new LambdaQueryWrapper<KnowledgeBase>()
+                        .eq(KnowledgeBase::getCreatedBy, userId)
+                        .orderByDesc(KnowledgeBase::getCreatedAt)
         );
 
         Map<UUID, Integer> documentCounts = documentMapper.selectList(
-                        new LambdaQueryWrapper<KnowledgeBaseDocument>().isNotNull(KnowledgeBaseDocument::getKbId))
+                        new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                                .eq(KnowledgeBaseDocument::getUserId, userId)
+                                .isNotNull(KnowledgeBaseDocument::getKbId))
                 .stream()
                 .collect(Collectors.toMap(KnowledgeBaseDocument::getKbId, item -> 1, Integer::sum));
 
@@ -51,41 +69,75 @@ public class KnowledgeBaseManagementService {
         return knowledgeBases;
     }
 
-    public KnowledgeBase getKnowledgeBase(UUID id) {
-        KnowledgeBase knowledgeBase = knowledgeBaseMapper.selectById(id);
-        if (knowledgeBase == null) {
-            throw new RuntimeException("知识库不存在: " + id);
-        }
+    @Cacheable(value = "knowledgeBaseDetailCache", key = "#userId.toString() + ':' + #id.toString()")
+    public KnowledgeBase getKnowledgeBase(UUID userId, UUID id) {
+        KnowledgeBase knowledgeBase = requireOwnedKnowledgeBase(userId, id);
         Long documentCount = documentMapper.selectCount(
-                new LambdaQueryWrapper<KnowledgeBaseDocument>().eq(KnowledgeBaseDocument::getKbId, id)
+                new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                        .eq(KnowledgeBaseDocument::getUserId, userId)
+                        .eq(KnowledgeBaseDocument::getKbId, id)
         );
         knowledgeBase.setDocumentCount(documentCount == null ? 0 : documentCount.intValue());
         return knowledgeBase;
     }
 
-    public KnowledgeBase updateKnowledgeBase(UUID id, String name, String description) {
+    @Caching(evict = {
+            @CacheEvict(value = "knowledgeBaseListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "knowledgeBaseDetailCache", allEntries = true),
+            @CacheEvict(value = "knowledgeBaseDocumentsCache", allEntries = true),
+            @CacheEvict(value = "documentListCache", allEntries = true)
+    })
+    public KnowledgeBase updateKnowledgeBase(UUID userId, UUID id, String name, String description) {
+        requireOwnedKnowledgeBase(userId, id);
         knowledgeBaseMapper.update(null, new LambdaUpdateWrapper<KnowledgeBase>()
                 .eq(KnowledgeBase::getId, id)
+                .eq(KnowledgeBase::getCreatedBy, userId)
                 .set(KnowledgeBase::getName, name)
                 .set(KnowledgeBase::getDescription, description)
                 .setSql("updated_at = NOW()"));
-        return getKnowledgeBase(id);
+        return getKnowledgeBase(userId, id);
     }
 
-    public void deleteKnowledgeBase(UUID id) {
+    @Caching(evict = {
+            @CacheEvict(value = "knowledgeBaseListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "knowledgeBaseDetailCache", allEntries = true),
+            @CacheEvict(value = "knowledgeBaseDocumentsCache", allEntries = true),
+            @CacheEvict(value = "documentListCache", allEntries = true),
+            @CacheEvict(value = "documentPreviewCache", allEntries = true)
+    })
+    public void deleteKnowledgeBase(UUID userId, UUID id) {
+        requireOwnedKnowledgeBase(userId, id);
         knowledgeBaseService.deleteKnowledgeBaseVectors(id);
         documentMapper.selectList(new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                        .eq(KnowledgeBaseDocument::getUserId, userId)
                         .eq(KnowledgeBaseDocument::getKbId, id))
                 .forEach(doc -> knowledgeBaseService.deleteStoredFile(doc.getStoragePath()));
         documentMapper.delete(new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                .eq(KnowledgeBaseDocument::getUserId, userId)
                 .eq(KnowledgeBaseDocument::getKbId, id));
-        knowledgeBaseMapper.deleteById(id);
-        log.info("删除知识库: {}", id);
+        knowledgeBaseMapper.delete(new LambdaQueryWrapper<KnowledgeBase>()
+                .eq(KnowledgeBase::getId, id)
+                .eq(KnowledgeBase::getCreatedBy, userId));
+        log.info("删除知识库 {}", id);
     }
 
-    public List<KnowledgeBaseDocument> listDocuments(UUID kbId) {
+    @Cacheable(value = "knowledgeBaseDocumentsCache", key = "#userId.toString() + ':' + #kbId.toString()")
+    public List<KnowledgeBaseDocument> listDocuments(UUID userId, UUID kbId) {
+        requireOwnedKnowledgeBase(userId, kbId);
         return documentMapper.selectList(new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                .eq(KnowledgeBaseDocument::getUserId, userId)
                 .eq(KnowledgeBaseDocument::getKbId, kbId)
                 .orderByDesc(KnowledgeBaseDocument::getCreatedAt));
+    }
+
+    private KnowledgeBase requireOwnedKnowledgeBase(UUID userId, UUID kbId) {
+        KnowledgeBase knowledgeBase = knowledgeBaseMapper.selectOne(new LambdaQueryWrapper<KnowledgeBase>()
+                .eq(KnowledgeBase::getId, kbId)
+                .eq(KnowledgeBase::getCreatedBy, userId)
+                .last("LIMIT 1"));
+        if (knowledgeBase == null) {
+            throw new BusinessException(ApiCode.NOT_FOUND, "知识库不存在或无权访问");
+        }
+        return knowledgeBase;
     }
 }

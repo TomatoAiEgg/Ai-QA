@@ -1,0 +1,48 @@
+package cn.net.tomatoegg.ai.common;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import org.springframework.http.HttpStatus;
+
+@Getter
+@AllArgsConstructor
+public enum ApiCode {
+
+    SUCCESS(200, HttpStatus.OK, "操作成功"),
+    BAD_REQUEST(400, HttpStatus.BAD_REQUEST, "请求参数错误"),
+    UNAUTHORIZED(401, HttpStatus.UNAUTHORIZED, "请先登录"),
+    FORBIDDEN(403, HttpStatus.FORBIDDEN, "无权访问"),
+    NOT_FOUND(404, HttpStatus.NOT_FOUND, "资源不存在"),
+    SERVER_ERROR(500, HttpStatus.INTERNAL_SERVER_ERROR, "服务器异常"),
+
+    REGISTER_FAILED(10001, HttpStatus.INTERNAL_SERVER_ERROR, "注册失败"),
+    LOGIN_FAILED(10002, HttpStatus.UNAUTHORIZED, "登录失败"),
+    LOGOUT_FAILED(10003, HttpStatus.INTERNAL_SERVER_ERROR, "退出登录失败"),
+    SESSION_QUERY_FAILED(10004, HttpStatus.INTERNAL_SERVER_ERROR, "获取登录态失败"),
+
+    CHAT_FAILED(11001, HttpStatus.INTERNAL_SERVER_ERROR, "对话失败"),
+    RAG_CHAT_FAILED(11002, HttpStatus.INTERNAL_SERVER_ERROR, "知识库对话失败"),
+
+    DOCUMENT_UPLOAD_FAILED(12001, HttpStatus.INTERNAL_SERVER_ERROR, "上传文档失败"),
+    DOCUMENT_LIST_FAILED(12002, HttpStatus.INTERNAL_SERVER_ERROR, "获取文档列表失败"),
+    DOCUMENT_DELETE_FAILED(12003, HttpStatus.INTERNAL_SERVER_ERROR, "删除文档失败"),
+    DOCUMENT_PREVIEW_FAILED(12004, HttpStatus.INTERNAL_SERVER_ERROR, "预览文档失败"),
+    CHUNK_PREVIEW_FAILED(12005, HttpStatus.INTERNAL_SERVER_ERROR, "预览切片失败"),
+
+    CONVERSATION_CREATE_FAILED(13001, HttpStatus.INTERNAL_SERVER_ERROR, "创建对话失败"),
+    CONVERSATION_LIST_FAILED(13002, HttpStatus.INTERNAL_SERVER_ERROR, "获取对话列表失败"),
+    CONVERSATION_MESSAGE_LIST_FAILED(13003, HttpStatus.INTERNAL_SERVER_ERROR, "获取对话消息失败"),
+    CONVERSATION_RENAME_FAILED(13004, HttpStatus.INTERNAL_SERVER_ERROR, "修改对话标题失败"),
+    CONVERSATION_DELETE_FAILED(13005, HttpStatus.INTERNAL_SERVER_ERROR, "删除对话失败"),
+
+    KNOWLEDGE_BASE_CREATE_FAILED(14001, HttpStatus.INTERNAL_SERVER_ERROR, "创建知识库失败"),
+    KNOWLEDGE_BASE_LIST_FAILED(14002, HttpStatus.INTERNAL_SERVER_ERROR, "获取知识库列表失败"),
+    KNOWLEDGE_BASE_GET_FAILED(14003, HttpStatus.INTERNAL_SERVER_ERROR, "获取知识库详情失败"),
+    KNOWLEDGE_BASE_UPDATE_FAILED(14004, HttpStatus.INTERNAL_SERVER_ERROR, "更新知识库失败"),
+    KNOWLEDGE_BASE_DELETE_FAILED(14005, HttpStatus.INTERNAL_SERVER_ERROR, "删除知识库失败"),
+    KNOWLEDGE_BASE_DOCUMENT_LIST_FAILED(14006, HttpStatus.INTERNAL_SERVER_ERROR, "获取知识库文档失败");
+
+    private final int code;
+    private final HttpStatus httpStatus;
+    private final String message;
+}
