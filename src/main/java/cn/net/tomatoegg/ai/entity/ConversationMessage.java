@@ -12,33 +12,23 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/**
- * 知识库实体
- *
- * @author 苏三
- * @date 2026/3/17
- */
-@TableName("knowledge_bases")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class KnowledgeBase {
+@TableName("conversation_messages")
+public class ConversationMessage {
 
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
-    private String name;
-    private String description;
-    @TableField("cover_color")
-    private String coverColor;
-    @TableField("created_by")
-    private UUID createdBy;
-    @TableField("is_public")
-    private Boolean isPublic;
-    @TableField(exist = false)
-    private Integer documentCount;
+
+    @TableField("conversation_id")
+    private UUID conversationId;
+
+    private String role;
+
+    private String content;
+
     @TableField("created_at")
     private OffsetDateTime createdAt;
-    @TableField("updated_at")
-    private OffsetDateTime updatedAt;
 }

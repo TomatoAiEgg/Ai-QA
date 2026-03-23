@@ -103,6 +103,11 @@ public class AiController {
         return Map.of("ok", true);
     }
 
+    @GetMapping("/ai/documents/{id}/preview")
+    public Object previewDocument(@PathVariable("id") UUID id) {
+        return knowledgeBaseService.previewDocument(id);
+    }
+
     /**
      * 预览文档切片效果
      * 上传文件后先不存储，仅返回切片结果用于预览

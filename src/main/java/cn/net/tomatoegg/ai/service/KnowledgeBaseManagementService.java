@@ -1,9 +1,11 @@
 package cn.net.tomatoegg.ai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import cn.net.tomatoegg.ai.entity.KnowledgeBase;
 import cn.net.tomatoegg.ai.entity.KnowledgeBaseDocument;
-import cn.net.tomatoegg.ai.repository.KnowledgeBaseDocumentRepository;
-import cn.net.tomatoegg.ai.repository.KnowledgeBaseRepository;
+import cn.net.tomatoegg.ai.mapper.KnowledgeBaseDocumentMapper;
+import cn.net.tomatoegg.ai.mapper.KnowledgeBaseMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -11,82 +13,79 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
-/**
- * 知识库管理服务
- *
- * @author 苏三
- * @date 2026/3/17
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class KnowledgeBaseManagementService {
 
-    private final KnowledgeBaseRepository knowledgeBaseRepository;
-    private final KnowledgeBaseDocumentRepository documentRepository;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final KnowledgeBaseDocumentMapper documentMapper;
     private final KnowledgeBaseService knowledgeBaseService;
 
-    /**
-     * 创建知识库
-     */
     public KnowledgeBase createKnowledgeBase(String name, String description) {
         KnowledgeBase kb = KnowledgeBase.builder()
-            .id(UUID.randomUUID())
-            .name(name)
-            .description(description)
-            .coverColor("#4F46E5")
-            .isPublic(false)
-            .build();
-
-        knowledgeBaseRepository.create(kb);
-        log.info("创建知识库：{} ({})", kb.getName(), kb.getId());
+                .id(UUID.randomUUID())
+                .name(name)
+                .description(description)
+                .coverColor("#4F46E5")
+                .isPublic(false)
+                .build();
+        knowledgeBaseMapper.insert(kb);
+        log.info("创建知识库: {} ({})", kb.getName(), kb.getId());
         return kb;
     }
 
-    /**
-     * 获取所有知识库
-     */
     public List<KnowledgeBase> listKnowledgeBases() {
-        return knowledgeBaseRepository.findAll();
+        List<KnowledgeBase> knowledgeBases = knowledgeBaseMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBase>().orderByDesc(KnowledgeBase::getCreatedAt)
+        );
+
+        Map<UUID, Integer> documentCounts = documentMapper.selectList(
+                        new LambdaQueryWrapper<KnowledgeBaseDocument>().isNotNull(KnowledgeBaseDocument::getKbId))
+                .stream()
+                .collect(Collectors.toMap(KnowledgeBaseDocument::getKbId, item -> 1, Integer::sum));
+
+        knowledgeBases.forEach(kb -> kb.setDocumentCount(documentCounts.getOrDefault(kb.getId(), 0)));
+        return knowledgeBases;
     }
 
-    /**
-     * 获取知识库详情
-     */
     public KnowledgeBase getKnowledgeBase(UUID id) {
-        return knowledgeBaseRepository.findById(id)
-            .orElseThrow(() -> new RuntimeException("知识库不存在：" + id));
+        KnowledgeBase knowledgeBase = knowledgeBaseMapper.selectById(id);
+        if (knowledgeBase == null) {
+            throw new RuntimeException("知识库不存在: " + id);
+        }
+        Long documentCount = documentMapper.selectCount(
+                new LambdaQueryWrapper<KnowledgeBaseDocument>().eq(KnowledgeBaseDocument::getKbId, id)
+        );
+        knowledgeBase.setDocumentCount(documentCount == null ? 0 : documentCount.intValue());
+        return knowledgeBase;
     }
 
-    /**
-     * 更新知识库
-     */
     public KnowledgeBase updateKnowledgeBase(UUID id, String name, String description) {
-        KnowledgeBase kb = getKnowledgeBase(id);
-        kb.setName(name);
-        kb.setDescription(description);
-        knowledgeBaseRepository.update(kb);
-        log.info("更新知识库：{} ({})", kb.getName(), kb.getId());
-        return kb;
+        knowledgeBaseMapper.update(null, new LambdaUpdateWrapper<KnowledgeBase>()
+                .eq(KnowledgeBase::getId, id)
+                .set(KnowledgeBase::getName, name)
+                .set(KnowledgeBase::getDescription, description)
+                .setSql("updated_at = NOW()"));
+        return getKnowledgeBase(id);
     }
 
-    /**
-     * 删除知识库（级联删除文档记录）
-     */
     public void deleteKnowledgeBase(UUID id) {
         knowledgeBaseService.deleteKnowledgeBaseVectors(id);
-        // 先删除关联的文档记录
-        documentRepository.deleteByKbId(id);
-        // 再删除知识库
-        knowledgeBaseRepository.delete(id);
-        log.info("删除知识库：{}", id);
+        documentMapper.selectList(new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                        .eq(KnowledgeBaseDocument::getKbId, id))
+                .forEach(doc -> knowledgeBaseService.deleteStoredFile(doc.getStoragePath()));
+        documentMapper.delete(new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                .eq(KnowledgeBaseDocument::getKbId, id));
+        knowledgeBaseMapper.deleteById(id);
+        log.info("删除知识库: {}", id);
     }
 
-    /**
-     * 获取知识库下的文档列表
-     */
     public List<KnowledgeBaseDocument> listDocuments(UUID kbId) {
-        return documentRepository.findByKbId(kbId);
+        return documentMapper.selectList(new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                .eq(KnowledgeBaseDocument::getKbId, kbId)
+                .orderByDesc(KnowledgeBaseDocument::getCreatedAt));
     }
 }

@@ -16,6 +16,11 @@ export const createKnowledgeBase = async (name, description) => {
   return res.data
 }
 
+export const updateKnowledgeBase = async (id, name, description) => {
+  const res = await api.put(`/api/knowledge-bases/${id}`, { name, description })
+  return res.data
+}
+
 export const deleteKnowledgeBase = async (id) => {
   await api.delete(`/api/knowledge-bases/${id}`)
 }
@@ -169,6 +174,11 @@ export const readSSEStream = async (response, onChunk) => {
   flushEvent()
 
   return buffer
+}
+
+export const previewDocument = async (id) => {
+  const res = await api.get(`/ai/documents/${id}/preview`)
+  return res.data
 }
 
 export default api

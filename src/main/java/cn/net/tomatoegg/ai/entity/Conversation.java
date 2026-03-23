@@ -12,37 +12,21 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/**
- * 知识库文档关联实体
- *
- * @author 苏三
- * @date 2026/3/17
- */
-@TableName("knowledge_base_documents")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class KnowledgeBaseDocument {
+@TableName("conversations")
+public class Conversation {
 
     @TableId(value = "id", type = IdType.INPUT)
     private UUID id;
-    @TableField("kb_id")
-    private UUID kbId;
-    private String filename;
-    @TableField("storage_path")
-    private String storagePath;
-    @TableField("file_hash")
-    private String fileHash;
-    @TableField("file_size")
-    private Long fileSize;
-    @TableField("chunk_count")
-    private Integer chunkCount;
-    private String status;
-    @TableField("error_message")
-    private String errorMessage;
+
+    private String title;
+
     @TableField("created_at")
     private OffsetDateTime createdAt;
+
     @TableField("updated_at")
     private OffsetDateTime updatedAt;
 }
