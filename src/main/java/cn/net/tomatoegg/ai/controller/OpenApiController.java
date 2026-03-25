@@ -6,6 +6,7 @@ import cn.net.tomatoegg.ai.exception.BusinessException;
 import cn.net.tomatoegg.ai.service.KnowledgeBaseService;
 import cn.net.tomatoegg.ai.service.OpenApiTokenService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -17,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/openapi")
 @RequiredArgsConstructor
@@ -32,6 +34,7 @@ public class OpenApiController {
                                               @RequestHeader(value = "X-API-Token", required = false) String apiTokenHeader) {
         try {
             UUID userId = openApiTokenService.authenticate(resolveToken(authorization, apiTokenHeader));
+            log.info("收到开放接口文档上传请求, userId={}, kbId={}, filename={}", userId, kbId, file.getOriginalFilename());
             String message = knowledgeBaseService.uploadDocument(file, kbId, userId);
             return ResponseUtils.success(Map.of(
                     "kbId", kbId.toString(),

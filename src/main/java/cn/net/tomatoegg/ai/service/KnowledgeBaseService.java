@@ -75,6 +75,7 @@ public class KnowledgeBaseService {
             throw new BusinessException(ApiCode.BAD_REQUEST, "请先选择知识库");
         }
         requireOwnedKnowledgeBase(userId, kbId);
+        log.info("开始上传文档, userId={}, kbId={}, filename={}, size={}", userId, kbId, file.getOriginalFilename(), file.getSize());
 
         Path storedFile = saveUploadedFile(file, userId);
         KnowledgeBaseDocument docRecord = KnowledgeBaseDocument.builder()
@@ -128,6 +129,8 @@ public class KnowledgeBaseService {
                     .set(KnowledgeBaseDocument::getStatus, "COMPLETED")
                     .set(KnowledgeBaseDocument::getErrorMessage, null)
                     .setSql("updated_at = NOW()"));
+            log.info("文档上传处理成功, userId={}, kbId={}, docId={}, filename={}, chunkCount={}",
+                    userId, kbId, docRecord.getId(), file.getOriginalFilename(), splitDocuments.size());
 
             return String.format(
                     "文档上传并处理成功，共生成 %d 个片段，平均每个片段 %d 字符，重叠率 %.1f%%",
@@ -136,7 +139,8 @@ public class KnowledgeBaseService {
                     stats.get("overlapRatio")
             );
         } catch (Exception e) {
-            log.error("文档处理失败", e);
+            log.error("文档处理失败, userId={}, kbId={}, docId={}, filename={}",
+                    userId, kbId, docRecord.getId(), file.getOriginalFilename(), e);
             documentMapper.update(null, new LambdaUpdateWrapper<KnowledgeBaseDocument>()
                     .eq(KnowledgeBaseDocument::getId, docRecord.getId())
                     .set(KnowledgeBaseDocument::getStatus, "FAILED")
@@ -157,8 +161,10 @@ public class KnowledgeBaseService {
         if (kbId != null) {
             requireOwnedKnowledgeBase(userId, kbId);
             chunks = vectorStoreMapper.searchByKnowledgeBaseId(kbId, queryEmbedding, topK);
+            log.info("RAG 检索完成, mode=single-kb, userId={}, kbId={}, topK={}, hitCount={}", userId, kbId, topK, chunks.size());
         } else {
             chunks = vectorStoreMapper.searchByUserId(userId, queryEmbedding, topK);
+            log.info("RAG 检索完成, mode=all-kb, userId={}, topK={}, hitCount={}", userId, topK, chunks.size());
         }
         return chunks.stream()
                 .map(this::toDocument)
@@ -214,10 +220,12 @@ public class KnowledgeBaseService {
         vectorStoreMapper.deleteByDocumentId(docId.toString());
         deleteStoredFile(document.getStoragePath());
         documentMapper.deleteById(docId);
+        log.info("删除文档成功, userId={}, kbId={}, docId={}, filename={}", userId, document.getKbId(), docId, document.getFilename());
     }
 
     public void deleteKnowledgeBaseVectors(UUID kbId) {
         vectorStoreMapper.deleteByKnowledgeBaseId(kbId.toString());
+        log.info("删除知识库向量数据成功, kbId={}", kbId);
     }
 
     public void deleteStoredFile(String storagePath) {
@@ -277,6 +285,7 @@ public class KnowledgeBaseService {
             String storedName = UUID.randomUUID() + "_" + originalName.replaceAll("[\\\\/:*?\"<>|]", "_");
             Path target = userStorageRoot.resolve(storedName);
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            log.info("保存原始文档成功, userId={}, path={}", userId, target.toAbsolutePath());
             return target;
         } catch (IOException e) {
             throw new BusinessException(ApiCode.DOCUMENT_UPLOAD_FAILED, "保存上传文档失败: " + e.getMessage(), e);

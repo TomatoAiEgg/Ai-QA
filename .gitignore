@@ -37,3 +37,4 @@ build/
 **/package-lock.json
 ui/dist/
 data/
+logs/

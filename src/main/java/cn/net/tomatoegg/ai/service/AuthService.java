@@ -55,6 +55,7 @@ public class AuthService {
                 .nickname(resolveNickname(nickname, normalizedEmail, normalizedPhone))
                 .build();
         appUserMapper.insert(user);
+        log.info("注册新用户成功, userId={}, email={}, phone={}", user.getId(), user.getEmail(), user.getPhone());
 
         try {
             StpUtil.login(user.getId().toString());
@@ -83,12 +84,14 @@ public class AuthService {
                 ? findByEmail(normalizeEmail(trimmed))
                 : findByPhone(normalizePhone(trimmed));
         if (user == null || !BCrypt.checkpw(password, user.getPasswordHash())) {
+            log.warn("登录失败, account={}", trimmed);
             throw new BusinessException(ApiCode.UNAUTHORIZED, "账号或密码错误");
         }
 
         try {
             StpUtil.login(user.getId().toString());
             adoptLegacyDataIfNeeded(user.getId());
+            log.info("登录成功, userId={}, account={}", user.getId(), trimmed);
             return cacheCurrentSession(user);
         } catch (Exception ex) {
             log.error("登录后初始化登录态失败, userId={}", user.getId(), ex);
@@ -98,8 +101,10 @@ public class AuthService {
 
     public void logout() {
         if (StpUtil.isLogin()) {
+            UUID userId = getCurrentUserId();
             authSessionCacheService.clearSession(StpUtil.getTokenValue());
             StpUtil.logout();
+            log.info("退出登录成功, userId={}", userId);
         }
     }
 
@@ -108,6 +113,7 @@ public class AuthService {
         try {
             Map<String, Object> cachedSession = authSessionCacheService.getSession(tokenValue);
             if (cachedSession != null) {
+                log.info("登录态命中缓存, token={}", tokenValue);
                 return cachedSession;
             }
         } catch (Exception ex) {
@@ -119,6 +125,7 @@ public class AuthService {
         if (user == null) {
             throw new BusinessException(ApiCode.UNAUTHORIZED, "用户不存在");
         }
+        log.info("登录态缓存未命中, 回源数据库恢复会话, userId={}", userId);
         return cacheCurrentSession(user);
     }
 
@@ -213,6 +220,7 @@ public class AuthService {
         String tokenValue = resolveTokenValue(user.getId());
         if (tokenValue != null && !tokenValue.isBlank()) {
             authSessionCacheService.cacheSession(tokenValue, payload, StpUtil.getTokenTimeout());
+            log.info("缓存登录态成功, userId={}, token={}", user.getId(), tokenValue);
         }
         return payload;
     }
@@ -230,6 +238,7 @@ public class AuthService {
         if (userCount == null || userCount != 1) {
             return;
         }
+        log.info("检测到首个用户登录, 开始接管历史遗留数据, userId={}", userId);
         conversationMapper.update(null, new LambdaUpdateWrapper<Conversation>()
                 .isNull(Conversation::getUserId)
                 .set(Conversation::getUserId, userId));

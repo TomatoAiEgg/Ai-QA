@@ -7,12 +7,14 @@ import cn.net.tomatoegg.ai.mapper.OpenApiTokenMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OpenApiTokenService {
@@ -34,6 +36,7 @@ public class OpenApiTokenService {
                 .status(STATUS_ACTIVE)
                 .build();
         openApiTokenMapper.insert(entity);
+        log.info("创建开放接口令牌成功, userId={}, tokenId={}, name={}", userId, entity.getId(), entity.getName());
 
         return Map.of(
                 "id", entity.getId().toString(),
@@ -73,6 +76,7 @@ public class OpenApiTokenService {
                 .eq(OpenApiToken::getUserId, userId)
                 .set(OpenApiToken::getStatus, STATUS_REVOKED)
                 .setSql("updated_at = NOW()"));
+        log.info("废弃开放接口令牌成功, userId={}, tokenId={}", userId, tokenId);
     }
 
     public UUID authenticate(String tokenValue) {
@@ -85,8 +89,10 @@ public class OpenApiTokenService {
                 .eq(OpenApiToken::getStatus, STATUS_ACTIVE)
                 .last("LIMIT 1"));
         if (token == null) {
+            log.warn("开放接口令牌认证失败, token={}", maskToken(tokenValue));
             throw new BusinessException(ApiCode.UNAUTHORIZED, "开放接口令牌无效");
         }
+        log.info("开放接口令牌认证成功, userId={}, tokenId={}", token.getUserId(), token.getId());
         return token.getUserId();
     }
 

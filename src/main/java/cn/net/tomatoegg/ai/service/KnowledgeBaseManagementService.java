@@ -46,7 +46,7 @@ public class KnowledgeBaseManagementService {
                 .isPublic(false)
                 .build();
         knowledgeBaseMapper.insert(kb);
-        log.info("创建知识库 {} ({})", kb.getName(), kb.getId());
+        log.info("创建知识库成功, userId={}, kbId={}, name={}", userId, kb.getId(), kb.getName());
         return kb;
     }
 
@@ -95,6 +95,7 @@ public class KnowledgeBaseManagementService {
                 .set(KnowledgeBase::getName, name)
                 .set(KnowledgeBase::getDescription, description)
                 .setSql("updated_at = NOW()"));
+        log.info("更新知识库成功, userId={}, kbId={}, name={}", userId, id, name);
         return getKnowledgeBase(userId, id);
     }
 
@@ -106,7 +107,10 @@ public class KnowledgeBaseManagementService {
             @CacheEvict(value = "documentPreviewCache", allEntries = true)
     })
     public void deleteKnowledgeBase(UUID userId, UUID id) {
-        requireOwnedKnowledgeBase(userId, id);
+        KnowledgeBase knowledgeBase = requireOwnedKnowledgeBase(userId, id);
+        long documentCount = documentMapper.selectCount(new LambdaQueryWrapper<KnowledgeBaseDocument>()
+                .eq(KnowledgeBaseDocument::getUserId, userId)
+                .eq(KnowledgeBaseDocument::getKbId, id));
         knowledgeBaseService.deleteKnowledgeBaseVectors(id);
         documentMapper.selectList(new LambdaQueryWrapper<KnowledgeBaseDocument>()
                         .eq(KnowledgeBaseDocument::getUserId, userId)
@@ -118,7 +122,7 @@ public class KnowledgeBaseManagementService {
         knowledgeBaseMapper.delete(new LambdaQueryWrapper<KnowledgeBase>()
                 .eq(KnowledgeBase::getId, id)
                 .eq(KnowledgeBase::getCreatedBy, userId));
-        log.info("删除知识库 {}", id);
+        log.info("删除知识库成功, userId={}, kbId={}, name={}, documentCount={}", userId, id, knowledgeBase.getName(), documentCount);
     }
 
     @Cacheable(value = "knowledgeBaseDocumentsCache", key = "#userId.toString() + ':' + #kbId.toString()")
