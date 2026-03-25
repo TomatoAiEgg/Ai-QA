@@ -3,18 +3,21 @@ package cn.net.tomatoegg.ai.service;
 import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.entity.KnowledgeBase;
 import cn.net.tomatoegg.ai.entity.KnowledgeBaseDocument;
+import cn.net.tomatoegg.ai.entity.VectorStoreChunk;
 import cn.net.tomatoegg.ai.exception.BusinessException;
 import cn.net.tomatoegg.ai.mapper.KnowledgeBaseDocumentMapper;
 import cn.net.tomatoegg.ai.mapper.KnowledgeBaseMapper;
 import cn.net.tomatoegg.ai.mapper.VectorStoreMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
@@ -31,6 +34,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -38,19 +42,22 @@ public class KnowledgeBaseService {
 
     private static final Path STORAGE_ROOT = Paths.get("data", "kb-files");
 
-    private final VectorStore vectorStore;
     private final TokenTextSplitter tokenTextSplitter;
+    private final EmbeddingModel embeddingModel;
+    private final ObjectMapper objectMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeBaseDocumentMapper documentMapper;
     private final VectorStoreMapper vectorStoreMapper;
 
-    public KnowledgeBaseService(VectorStore vectorStore,
-                                TokenTextSplitter tokenTextSplitter,
+    public KnowledgeBaseService(TokenTextSplitter tokenTextSplitter,
+                                EmbeddingModel embeddingModel,
+                                ObjectMapper objectMapper,
                                 KnowledgeBaseMapper knowledgeBaseMapper,
                                 KnowledgeBaseDocumentMapper documentMapper,
                                 VectorStoreMapper vectorStoreMapper) {
-        this.vectorStore = vectorStore;
         this.tokenTextSplitter = tokenTextSplitter;
+        this.embeddingModel = embeddingModel;
+        this.objectMapper = objectMapper;
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.documentMapper = documentMapper;
         this.vectorStoreMapper = vectorStoreMapper;
@@ -100,10 +107,18 @@ public class KnowledgeBaseService {
                 document.getMetadata().put("totalChunks", splitDocuments.size());
             }
 
-            int batchSize = 10;
-            for (int i = 0; i < splitDocuments.size(); i += batchSize) {
-                int end = Math.min(i + batchSize, splitDocuments.size());
-                vectorStore.add(splitDocuments.subList(i, end));
+            for (int i = 0; i < splitDocuments.size(); i++) {
+                Document document = splitDocuments.get(i);
+                vectorStoreMapper.insertChunk(
+                        UUID.randomUUID(),
+                        userId,
+                        kbId,
+                        docRecord.getId(),
+                        i,
+                        document.getContent(),
+                        toMetadataJson(document.getMetadata()),
+                        toVectorLiteral(embeddingModel.embed(document))
+                );
             }
 
             Map<String, Object> stats = analyzeChunks(splitDocuments, totalOriginalChars);
@@ -137,20 +152,17 @@ public class KnowledgeBaseService {
     }
 
     public List<Document> searchFromKnowledgeBase(String query, UUID kbId, int topK, UUID userId) {
-        if (kbId == null) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "RAG 对话必须指定知识库");
+        String queryEmbedding = toVectorLiteral(embeddingModel.embed(query));
+        List<VectorStoreChunk> chunks;
+        if (kbId != null) {
+            requireOwnedKnowledgeBase(userId, kbId);
+            chunks = vectorStoreMapper.searchByKnowledgeBaseId(kbId, queryEmbedding, topK);
+        } else {
+            chunks = vectorStoreMapper.searchByUserId(userId, queryEmbedding, topK);
         }
-        requireOwnedKnowledgeBase(userId, kbId);
-
-        SearchRequest request = SearchRequest.builder()
-                .query(query)
-                .topK(topK)
-                .similarityThreshold(0.6)
-                .build();
-        request = SearchRequest.from(request)
-                .filterExpression("kb_id == '" + kbId + "'")
-                .build();
-        return vectorStore.similaritySearch(request);
+        return chunks.stream()
+                .map(this::toDocument)
+                .collect(Collectors.toList());
     }
 
     @Cacheable(value = "documentListCache", key = "#userId.toString() + ':' + (#kbId == null ? 'all' : #kbId.toString())")
@@ -274,6 +286,37 @@ public class KnowledgeBaseService {
     private List<Document> readDocuments(Path filePath) {
         TikaDocumentReader reader = new TikaDocumentReader(new org.springframework.core.io.FileSystemResource(filePath));
         return reader.read();
+    }
+
+    private String toMetadataJson(Map<String, Object> metadata) {
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ApiCode.SERVER_ERROR, "序列化向量元数据失败", e);
+        }
+    }
+
+    private String toVectorLiteral(float[] embedding) {
+        StringBuilder builder = new StringBuilder("[");
+        for (int i = 0; i < embedding.length; i++) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            builder.append(embedding[i]);
+        }
+        builder.append(']');
+        return builder.toString();
+    }
+
+    private Document toDocument(VectorStoreChunk chunk) {
+        try {
+            Map<String, Object> metadata = objectMapper.readValue(chunk.getMetadataJson(), new TypeReference<>() {});
+            Document document = new Document(chunk.getContent(), metadata);
+            metadata.put("score", chunk.getScore());
+            return document;
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ApiCode.SERVER_ERROR, "解析向量元数据失败", e);
+        }
     }
 
     private KnowledgeBase requireOwnedKnowledgeBase(UUID userId, UUID kbId) {

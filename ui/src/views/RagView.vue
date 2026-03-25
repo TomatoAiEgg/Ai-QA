@@ -300,6 +300,7 @@ const getKbMonogram = (name) => {
 const loadKnowledgeBases = async () => {
   try {
     knowledgeBases.value = await api.getKnowledgeBases()
+    window.dispatchEvent(new CustomEvent('knowledge-bases-updated'))
   } catch (error) {
     ElMessage.error('加载知识库列表失败：' + error.message)
   }

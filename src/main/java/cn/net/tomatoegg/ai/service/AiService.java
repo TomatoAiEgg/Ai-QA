@@ -6,7 +6,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -23,7 +22,6 @@ public class AiService {
 
     private final ChatClient chatClient;
     private final QwenIntegration qwenIntegration;
-    private final VectorStore vectorStore;
     private final ConversationService conversationService;
     private final RerankService rerankService;
     private final KnowledgeBaseService knowledgeBaseService;
@@ -31,12 +29,10 @@ public class AiService {
     public AiService(ChatClient.Builder chatClientBuilder,
                      QwenIntegration qwenIntegration,
                      ChatMemory chatMemory,
-                     VectorStore vectorStore,
                      ConversationService conversationService,
                      RerankService rerankService,
                      KnowledgeBaseService knowledgeBaseService) {
         this.qwenIntegration = qwenIntegration;
-        this.vectorStore = vectorStore;
         this.conversationService = conversationService;
         this.rerankService = rerankService;
         this.knowledgeBaseService = knowledgeBaseService;

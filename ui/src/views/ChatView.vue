@@ -86,6 +86,10 @@
           class="kb-select"
         >
           <el-option
+            label="全部知识库"
+            :value="ALL_KNOWLEDGE_BASES"
+          />
+          <el-option
             v-for="kb in knowledgeBases"
             :key="kb.id"
             :label="kb.name"
@@ -218,7 +222,8 @@ const isBotResponding = ref(false)
 const useRag = ref(false)
 const model = ref('qwen')
 const knowledgeBases = ref([])
-const selectedKbId = ref(null)
+const ALL_KNOWLEDGE_BASES = '__ALL_KNOWLEDGE_BASES__'
+const selectedKbId = ref(ALL_KNOWLEDGE_BASES)
 
 const currentConvId = inject('currentConvId', ref(null))
 const refreshConversations = inject('refreshConversations', () => {})
@@ -243,15 +248,21 @@ const handleNewConversation = () => {
   messages.value = []
 }
 
+const handleKnowledgeBasesUpdated = () => {
+  loadKnowledgeBases()
+}
+
 onMounted(() => {
   window.addEventListener('conversation-change', handleConversationChange)
   window.addEventListener('new-conversation', handleNewConversation)
+  window.addEventListener('knowledge-bases-updated', handleKnowledgeBasesUpdated)
   loadKnowledgeBases()
 })
 
 onUnmounted(() => {
   window.removeEventListener('conversation-change', handleConversationChange)
   window.removeEventListener('new-conversation', handleNewConversation)
+  window.removeEventListener('knowledge-bases-updated', handleKnowledgeBasesUpdated)
 })
 
 const canSend = computed(() => question.value.trim().length > 0)
@@ -259,8 +270,8 @@ const canSend = computed(() => question.value.trim().length > 0)
 const loadKnowledgeBases = async () => {
   try {
     knowledgeBases.value = await api.getKnowledgeBases()
-    if (!selectedKbId.value && knowledgeBases.value.length > 0) {
-      selectedKbId.value = knowledgeBases.value[0].id
+    if (selectedKbId.value !== ALL_KNOWLEDGE_BASES && !knowledgeBases.value.some(kb => kb.id === selectedKbId.value)) {
+      selectedKbId.value = ALL_KNOWLEDGE_BASES
     }
   } catch (error) {
     console.error('加载知识库失败:', error)
@@ -268,12 +279,10 @@ const loadKnowledgeBases = async () => {
 }
 
 const ensureRagSelection = () => {
-  if (!useRag.value || selectedKbId.value) {
-    return true
-  }
-  ElMessage.error('请先选择知识库')
-  return false
+  return true
 }
+
+const resolveSelectedKbId = () => selectedKbId.value === ALL_KNOWLEDGE_BASES ? null : selectedKbId.value
 
 const useSuggestion = async (text) => {
   let streamingMsg = null
@@ -327,7 +336,7 @@ const useSuggestion = async (text) => {
     const response = await api.chatByStream(content, currentConvId.value, {
       useRag: useRag.value,
       model: model.value,
-      kbId: selectedKbId.value
+      kbId: resolveSelectedKbId()
     })
 
     await api.readSSEStream(response, async (data) => {
@@ -429,7 +438,7 @@ const handleSend = async () => {
     const response = await api.chatByStream(content, currentConvId.value, {
       useRag: useRag.value,
       model: model.value,
-      kbId: selectedKbId.value
+      kbId: resolveSelectedKbId()
     })
 
     // 使用 SSE 流读取

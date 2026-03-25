@@ -72,6 +72,13 @@ public class AuthService {
         }
 
         String trimmed = account.trim();
+        if (trimmed.contains("@")) {
+            if (!Validator.isEmail(trimmed)) {
+                throw new BusinessException(ApiCode.BAD_REQUEST, "邮箱格式不正确");
+            }
+        } else if (!Validator.isMobile(trimmed)) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "手机号格式不正确");
+        }
         AppUser user = trimmed.contains("@")
                 ? findByEmail(normalizeEmail(trimmed))
                 : findByPhone(normalizePhone(trimmed));

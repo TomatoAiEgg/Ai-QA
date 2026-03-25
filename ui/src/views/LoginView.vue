@@ -38,12 +38,12 @@
         </div>
 
         <div class="type-switch">
-          <button :class="{ active: accountType === 'email' }" type="button" @click="accountType = 'email'">邮箱</button>
-          <button :class="{ active: accountType === 'phone' }" type="button" @click="accountType = 'phone'">手机号</button>
+          <button :class="{ active: accountType === 'email' }" type="button" @click="switchAccountType('email')">邮箱</button>
+          <button :class="{ active: accountType === 'phone' }" type="button" @click="switchAccountType('phone')">手机号</button>
         </div>
 
-        <el-form :model="form" label-position="top" @submit.prevent>
-          <el-form-item :label="accountType === 'email' ? '邮箱' : '手机号'">
+        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" status-icon @submit.prevent>
+          <el-form-item :label="accountType === 'email' ? '邮箱' : '手机号'" prop="account">
             <el-input
               v-model="form.account"
               size="large"
@@ -51,7 +51,7 @@
             />
           </el-form-item>
 
-          <el-form-item label="密码">
+          <el-form-item label="密码" prop="password">
             <el-input
               v-model="form.password"
               size="large"
@@ -76,7 +76,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { applySession } from '../auth.js'
@@ -85,6 +85,7 @@ import * as api from '../api.js'
 const router = useRouter()
 const route = useRoute()
 
+const formRef = ref()
 const accountType = ref('email')
 const submitting = ref(false)
 const form = reactive({
@@ -92,19 +93,56 @@ const form = reactive({
   password: ''
 })
 
-const submit = async () => {
-  if (!form.account.trim()) {
-    ElMessage.error(accountType.value === 'email' ? '请输入邮箱' : '请输入手机号')
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const phonePattern = /^1\d{10}$/
+const validateAccount = (_rule, value, callback) => {
+  const account = (value || '').trim()
+  if (!account) {
+    callback(new Error(accountType.value === 'email' ? '请输入邮箱' : '请输入手机号'))
     return
   }
-  if (!form.password) {
-    ElMessage.error('请输入密码')
+  if (accountType.value === 'email' && !emailPattern.test(account)) {
+    callback(new Error('请输入正确的邮箱格式'))
+    return
+  }
+  if (accountType.value === 'phone' && !phonePattern.test(account)) {
+    callback(new Error('请输入正确的手机号格式'))
+    return
+  }
+  callback()
+}
+
+const rules = reactive({
+  account: [
+    { validator: validateAccount, trigger: ['blur', 'change'] }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' }
+  ]
+})
+
+const switchAccountType = async (type) => {
+  if (accountType.value === type) {
+    return
+  }
+  accountType.value = type
+  await nextTick()
+  formRef.value?.clearValidate('account')
+  if (form.account.trim()) {
+    formRef.value?.validateField('account')
+  }
+}
+
+const submit = async () => {
+  const account = form.account.trim()
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) {
     return
   }
 
   submitting.value = true
   try {
-    const payload = await api.login(form.account.trim(), form.password)
+    const payload = await api.login(account, form.password)
     applySession(payload)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.replace(redirect)
