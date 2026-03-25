@@ -1,6 +1,7 @@
 package cn.net.tomatoegg.ai.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.stp.SaTokenInfo;
 import cn.hutool.core.lang.Validator;
 import cn.hutool.crypto.digest.BCrypt;
 import cn.net.tomatoegg.ai.common.ApiCode;
@@ -16,11 +17,14 @@ import cn.net.tomatoegg.ai.mapper.KnowledgeBaseMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -52,9 +56,14 @@ public class AuthService {
                 .build();
         appUserMapper.insert(user);
 
-        StpUtil.login(user.getId().toString());
-        adoptLegacyDataIfNeeded(user.getId());
-        return cacheCurrentSession(user);
+        try {
+            StpUtil.login(user.getId().toString());
+            adoptLegacyDataIfNeeded(user.getId());
+            return cacheCurrentSession(user);
+        } catch (Exception ex) {
+            log.error("注册后初始化登录态失败, userId={}", user.getId(), ex);
+            throw ex;
+        }
     }
 
     public Map<String, Object> login(String account, String password) {
@@ -70,9 +79,14 @@ public class AuthService {
             throw new BusinessException(ApiCode.UNAUTHORIZED, "账号或密码错误");
         }
 
-        StpUtil.login(user.getId().toString());
-        adoptLegacyDataIfNeeded(user.getId());
-        return cacheCurrentSession(user);
+        try {
+            StpUtil.login(user.getId().toString());
+            adoptLegacyDataIfNeeded(user.getId());
+            return cacheCurrentSession(user);
+        } catch (Exception ex) {
+            log.error("登录后初始化登录态失败, userId={}", user.getId(), ex);
+            throw ex;
+        }
     }
 
     public void logout() {
@@ -84,9 +98,14 @@ public class AuthService {
 
     public Map<String, Object> getCurrentSession() {
         String tokenValue = StpUtil.getTokenValue();
-        Map<String, Object> cachedSession = authSessionCacheService.getSession(tokenValue);
-        if (cachedSession != null) {
-            return cachedSession;
+        try {
+            Map<String, Object> cachedSession = authSessionCacheService.getSession(tokenValue);
+            if (cachedSession != null) {
+                return cachedSession;
+            }
+        } catch (Exception ex) {
+            log.warn("读取登录态缓存失败, token={}", tokenValue, ex);
+            authSessionCacheService.clearSession(tokenValue);
         }
         UUID userId = getCurrentUserId();
         AppUser user = appUserMapper.selectById(userId);
@@ -97,7 +116,17 @@ public class AuthService {
     }
 
     public UUID getCurrentUserId() {
-        return UUID.fromString(StpUtil.getLoginIdAsString());
+        try {
+            String loginId = StpUtil.getLoginIdAsString();
+            if (loginId == null || loginId.isBlank()) {
+                throw new BusinessException(ApiCode.UNAUTHORIZED, "请先登录");
+            }
+            return UUID.fromString(loginId);
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BusinessException(ApiCode.UNAUTHORIZED, "登录态已失效", ex);
+        }
     }
 
     private void validateRegisterInput(String email, String phone, String password) {
@@ -158,22 +187,35 @@ public class AuthService {
     }
 
     private Map<String, Object> buildSessionPayload(AppUser user) {
-        return Map.of(
-                "user", Map.of(
-                        "id", user.getId().toString(),
-                        "email", user.getEmail() == null ? "" : user.getEmail(),
-                        "phone", user.getPhone() == null ? "" : user.getPhone(),
-                        "nickname", user.getNickname()
-                ),
-                "tokenName", StpUtil.getTokenName(),
-                "tokenValue", StpUtil.getTokenValue()
-        );
+        String tokenValue = resolveTokenValue(user.getId());
+        Map<String, Object> userPayload = new LinkedHashMap<>();
+        userPayload.put("id", user.getId().toString());
+        userPayload.put("email", user.getEmail() == null ? "" : user.getEmail());
+        userPayload.put("phone", user.getPhone() == null ? "" : user.getPhone());
+        userPayload.put("nickname", user.getNickname());
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("user", userPayload);
+        payload.put("tokenName", StpUtil.getTokenName());
+        payload.put("tokenValue", tokenValue == null ? "" : tokenValue);
+        return payload;
     }
 
     private Map<String, Object> cacheCurrentSession(AppUser user) {
         Map<String, Object> payload = buildSessionPayload(user);
-        authSessionCacheService.cacheSession(StpUtil.getTokenValue(), payload, StpUtil.getTokenTimeout());
+        String tokenValue = resolveTokenValue(user.getId());
+        if (tokenValue != null && !tokenValue.isBlank()) {
+            authSessionCacheService.cacheSession(tokenValue, payload, StpUtil.getTokenTimeout());
+        }
         return payload;
+    }
+
+    private String resolveTokenValue(UUID userId) {
+        SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
+        if (tokenInfo != null && tokenInfo.getTokenValue() != null && !tokenInfo.getTokenValue().isBlank()) {
+            return tokenInfo.getTokenValue();
+        }
+        return StpUtil.getTokenValueByLoginId(userId.toString());
     }
 
     private void adoptLegacyDataIfNeeded(UUID userId) {

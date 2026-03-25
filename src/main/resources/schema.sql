@@ -91,3 +91,19 @@ CREATE INDEX IF NOT EXISTS idx_kb_documents_created_at
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_bases_created_by
   ON knowledge_bases(created_by, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS open_api_tokens (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  token VARCHAR(255) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_open_api_tokens_token
+  ON open_api_tokens(token);
+
+CREATE INDEX IF NOT EXISTS idx_open_api_tokens_user_id
+  ON open_api_tokens(user_id, created_at DESC);

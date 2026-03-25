@@ -1,17 +1,40 @@
 <template>
   <div class="login-page">
-    <div class="login-backdrop"></div>
-    <div class="login-shell">
-      <div class="login-brand">
-        <span class="login-eyebrow">AI-QA</span>
-        <h1>统一登录入口</h1>
-        <p>支持邮箱或手机号登录，登录后即可访问对话历史与知识库。</p>
-      </div>
+    <div class="login-grid">
+      <section class="brand-panel">
+        <span class="brand-badge">AI-QA Workspace</span>
+        <h1>统一账号登录</h1>
+        <p class="brand-copy">
+          面向知识库问答、智能客服和开放文档接入的一体化工作台。
+          登录后即可访问会话历史、知识库管理和外部上传能力。
+        </p>
 
-      <div class="login-card">
-        <div class="mode-switch">
-          <button :class="{ active: mode === 'login' }" type="button" @click="mode = 'login'">登录</button>
-          <button :class="{ active: mode === 'register' }" type="button" @click="mode = 'register'">注册</button>
+        <div class="brand-highlights">
+          <article>
+            <strong>知识库问答</strong>
+            <span>支持多知识库、RAG 检索与流式回复。</span>
+          </article>
+          <article>
+            <strong>统一登录态</strong>
+            <span>基于 Sa-Token 与 Redis 管理会话和缓存。</span>
+          </article>
+          <article>
+            <strong>开放文档接入</strong>
+            <span>外部系统可通过 token 将文件写入指定知识库。</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="login-card">
+        <div class="card-header">
+          <div>
+            <p class="card-eyebrow">ACCOUNT CENTER</p>
+            <h2>登录 AI-QA</h2>
+          </div>
+          <div class="mode-switch">
+            <button class="active" type="button">登录</button>
+            <button type="button" disabled>注册已关闭</button>
+          </div>
         </div>
 
         <div class="type-switch">
@@ -20,34 +43,34 @@
         </div>
 
         <el-form :model="form" label-position="top" @submit.prevent>
-          <el-form-item v-if="mode === 'register'" label="昵称">
-            <el-input v-model="form.nickname" placeholder="给自己起一个名称" />
-          </el-form-item>
-
           <el-form-item :label="accountType === 'email' ? '邮箱' : '手机号'">
             <el-input
               v-model="form.account"
-              :placeholder="accountType === 'email' ? 'name@example.com' : '请输入 11 位手机号'"
+              size="large"
+              :placeholder="accountType === 'email' ? '请输入企业邮箱' : '请输入手机号'"
             />
           </el-form-item>
 
           <el-form-item label="密码">
-            <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
-          </el-form-item>
-
-          <el-form-item v-if="mode === 'register'" label="确认密码">
-            <el-input v-model="form.confirmPassword" type="password" show-password placeholder="再次输入密码" />
+            <el-input
+              v-model="form.password"
+              size="large"
+              type="password"
+              show-password
+              placeholder="请输入登录密码"
+            />
           </el-form-item>
 
           <el-button class="submit-btn" type="primary" :loading="submitting" @click="submit">
-            {{ mode === 'login' ? '登录并进入工作台' : '注册并进入工作台' }}
+            登录并进入工作台
           </el-button>
         </el-form>
 
-        <p class="login-tip">
-          {{ mode === 'login' ? '使用邮箱或手机号 + 密码登录。' : '注册时邮箱和手机号至少填写一个。' }}
-        </p>
-      </div>
+        <div class="card-footer">
+          <p>当前版本仅开放已有账号登录，注册入口已关闭。</p>
+          <p>如需开通账号，请联系系统管理员。</p>
+        </div>
+      </section>
     </div>
   </div>
 </template>
@@ -62,14 +85,11 @@ import * as api from '../api.js'
 const router = useRouter()
 const route = useRoute()
 
-const mode = ref('login')
 const accountType = ref('email')
 const submitting = ref(false)
 const form = reactive({
-  nickname: '',
   account: '',
-  password: '',
-  confirmPassword: ''
+  password: ''
 })
 
 const submit = async () => {
@@ -81,26 +101,14 @@ const submit = async () => {
     ElMessage.error('请输入密码')
     return
   }
-  if (mode.value === 'register' && form.password !== form.confirmPassword) {
-    ElMessage.error('两次输入的密码不一致')
-    return
-  }
 
   submitting.value = true
   try {
-    const payload = mode.value === 'login'
-      ? await api.login(form.account.trim(), form.password)
-      : await api.register({
-          nickname: form.nickname.trim(),
-          email: accountType.value === 'email' ? form.account.trim() : '',
-          phone: accountType.value === 'phone' ? form.account.trim() : '',
-          password: form.password
-        })
-
+    const payload = await api.login(form.account.trim(), form.password)
     applySession(payload)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.replace(redirect)
-    ElMessage.success(mode.value === 'login' ? '登录成功' : '注册成功')
+    ElMessage.success('登录成功')
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -111,132 +119,240 @@ const submit = async () => {
 
 <style scoped>
 .login-page {
-  position: relative;
   min-height: 100vh;
-  overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.16), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.18), transparent 24%),
-    linear-gradient(180deg, #edf3fb 0%, #e5edf6 100%);
+    radial-gradient(circle at 18% 18%, rgba(54, 92, 181, 0.2), transparent 24%),
+    radial-gradient(circle at 86% 12%, rgba(33, 145, 251, 0.14), transparent 20%),
+    linear-gradient(135deg, #e9eef8 0%, #dfe7f3 42%, #f4f7fb 100%);
 }
 
-.login-backdrop {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.8), transparent 18%),
-    radial-gradient(circle at 85% 12%, rgba(255, 255, 255, 0.58), transparent 16%);
-  pointer-events: none;
-}
-
-.login-shell {
-  position: relative;
-  z-index: 1;
+.login-grid {
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 32px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 520px);
+  gap: 40px;
   align-items: center;
   min-height: 100vh;
-  padding: 48px;
+  padding: 40px 56px;
 }
 
-.login-brand h1 {
-  margin: 12px 0 14px;
-  font-size: clamp(42px, 5vw, 64px);
-  line-height: 1.04;
-  color: #132031;
+.brand-panel {
+  position: relative;
+  padding: 44px;
+  border-radius: 32px;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)),
+    linear-gradient(135deg, #103067, #2459b8);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 30px 90px rgba(17, 33, 66, 0.18);
+  overflow: hidden;
 }
 
-.login-brand p {
-  max-width: 520px;
-  margin: 0;
-  color: #5f6f84;
-  font-size: 16px;
-  line-height: 1.7;
+.brand-panel::after {
+  content: '';
+  position: absolute;
+  right: -80px;
+  bottom: -80px;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 68%);
 }
 
-.login-eyebrow {
+.brand-badge {
   display: inline-flex;
   align-items: center;
-  height: 32px;
+  height: 34px;
   padding: 0 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #32507a;
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.login-card {
-  padding: 28px;
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.12);
+.brand-panel h1 {
+  margin: 20px 0 16px;
+  color: #fff;
+  font-size: clamp(40px, 5vw, 62px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
 }
 
-.mode-switch,
-.type-switch {
+.brand-copy {
+  max-width: 620px;
+  margin: 0;
+  color: rgba(234, 241, 255, 0.88);
+  font-size: 16px;
+  line-height: 1.85;
+}
+
+.brand-highlights {
+  display: grid;
+  gap: 16px;
+  margin-top: 34px;
+}
+
+.brand-highlights article {
+  display: grid;
+  gap: 6px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.brand-highlights strong {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.brand-highlights span {
+  color: rgba(232, 239, 253, 0.82);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.login-card {
+  padding: 32px;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(158, 172, 196, 0.22);
+  box-shadow: 0 24px 70px rgba(24, 39, 75, 0.14);
+  backdrop-filter: blur(16px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.card-eyebrow {
+  margin: 0 0 10px;
+  color: #6a7a93;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.card-header h2 {
+  margin: 0;
+  color: #15233a;
+  font-size: 28px;
+}
+
+.mode-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-}
-
-.type-switch {
-  margin-top: 12px;
-  margin-bottom: 18px;
+  min-width: 220px;
 }
 
 .mode-switch button,
 .type-switch button {
-  height: 44px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  height: 42px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #607086;
+  border: 1px solid rgba(172, 184, 205, 0.24);
+  background: rgba(245, 247, 251, 0.88);
+  color: #65758d;
   font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .mode-switch button.active,
 .type-switch button.active {
-  color: #1f4ec8;
-  background: rgba(37, 99, 235, 0.1);
-  border-color: rgba(37, 99, 235, 0.18);
+  border-color: rgba(37, 99, 235, 0.22);
+  background: rgba(37, 99, 235, 0.08);
+  color: #2255cb;
+}
+
+.mode-switch button:disabled {
+  cursor: not-allowed;
+  color: #a2aec0;
+  background: rgba(240, 243, 248, 0.76);
+}
+
+.type-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+:deep(.el-form-item__label) {
+  color: #44536a;
+  font-weight: 600;
+}
+
+:deep(.el-input__wrapper) {
+  min-height: 50px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px rgba(179, 191, 211, 0.26) inset;
 }
 
 .submit-btn {
   width: 100%;
-  height: 48px;
-  margin-top: 6px;
+  height: 50px;
+  margin-top: 8px;
   border-radius: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, #2a61df 0%, #1f8cff 100%);
+  border: none;
+  box-shadow: 0 16px 36px rgba(39, 106, 224, 0.26);
 }
 
-.login-tip {
-  margin: 16px 0 0;
-  color: #748295;
+.card-footer {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(221, 228, 239, 0.86);
+}
+
+.card-footer p {
+  margin: 0;
+  color: #728197;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
-@media (max-width: 960px) {
-  .login-shell {
+@media (max-width: 1100px) {
+  .login-grid {
     grid-template-columns: 1fr;
-    padding: 24px;
+    padding: 28px;
   }
 
-  .login-brand {
-    text-align: center;
-  }
-
-  .login-brand p {
+  .brand-panel,
+  .login-card {
+    max-width: 760px;
     margin: 0 auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .login-grid {
+    padding: 18px;
+  }
+
+  .brand-panel,
+  .login-card {
+    padding: 24px;
+    border-radius: 24px;
+  }
+
+  .card-header {
+    flex-direction: column;
+  }
+
+  .mode-switch {
+    width: 100%;
+    min-width: 0;
   }
 }
 </style>

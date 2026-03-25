@@ -1,7 +1,4 @@
 package cn.net.tomatoegg.ai.config;
-
-import cn.dev33.satoken.dao.SaTokenDao;
-import cn.dev33.satoken.dao.SaTokenDaoForRedisTemplate;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
@@ -54,13 +51,6 @@ public class RedisConfig {
                 .cacheDefaults(configuration)
                 .transactionAware()
                 .build();
-    }
-
-    @Bean
-    public SaTokenDao saTokenDao(RedisConnectionFactory connectionFactory) {
-        SaTokenDaoForRedisTemplate saTokenDao = new SaTokenDaoForRedisTemplate();
-        saTokenDao.init(connectionFactory);
-        return saTokenDao;
     }
 
     private ObjectMapper redisObjectMapper() {
