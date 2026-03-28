@@ -38,3 +38,4 @@ build/
 ui/dist/
 data/
 logs/
+.env
