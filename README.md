@@ -142,3 +142,34 @@ AI-QA/
 - Redis 使用 `redis:7.4`
 
 如果你只是想从 GitHub 拉下来直接部署，按上面的“快速部署”执行即可。
+
+## 模型自动切换
+
+- 聊天模型不再写死为单个模型
+- 默认模型池：
+  - `qwen-plus-2025-01-25`
+  - `qwen-turbo-2025-02-11`
+  - `qwen-long`
+- 当某个模型出现 `AllocationQuota.FreeTierOnly` 或免费额度耗尽时，后端会自动切到下一个可用模型
+- 当 DashScope 出现 `Connection reset` 等瞬时网络错误时，后端会先重试，再切备用模型
+- 相关环境变量可在 `.env` 中覆盖：
+
+```env
+AI_CHAT_DEFAULT_MODEL=qwen-plus-2025-01-25
+AI_CHAT_FALLBACK_MODEL_1=qwen-turbo-2025-02-11
+AI_CHAT_FALLBACK_MODEL_2=qwen-long
+AI_EMBEDDING_DEFAULT_MODEL=text-embedding-v3
+```
+
+## 运维可视化
+
+- 默认不启动 Portainer
+- 如需可视化管理 Docker 容器和日志，可执行：
+
+```bash
+docker compose --profile ops up -d portainer
+```
+
+- 访问地址：
+  - `http://服务器IP:9000`
+  - `https://服务器IP:9443`

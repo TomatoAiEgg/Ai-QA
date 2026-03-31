@@ -23,8 +23,8 @@ public class AuthSessionCacheService {
             return null;
         }
         Object value = redisTemplate.opsForValue().get(buildKey(tokenValue));
-        if (value instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
+        if (value instanceof Map) {
+            return (Map<String, Object>) value;
         }
         return null;
     }

@@ -1,6 +1,10 @@
 spring:
   application:
     name: AI-QA
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:50MB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:50MB}
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/Ai-QA}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
@@ -40,11 +44,11 @@ spring:
       api-key: ${SPRING_AI_OPENAI_API_KEY:${QWEN_API_KEY:}}
       embedding:
         options:
-          model: text-embedding-v3
+          model: ${AI_EMBEDDING_DEFAULT_MODEL:text-embedding-v3}
       base-url: https://dashscope.aliyuncs.com/compatible-mode
       chat:
         options:
-          model: qwen-vl-plus-latest
+          model: ${AI_CHAT_DEFAULT_MODEL:qwen-plus-2025-01-25}
           timeout: 120
       connection-pool:
         max-idle: 10
@@ -73,6 +77,19 @@ ai:
       model: qwen3-rerank
       min-score: 0.5
       top-n: 3
+    model-router:
+      chat:
+        default-model: ${AI_CHAT_DEFAULT_MODEL:qwen-plus-2025-01-25}
+        fallback-models:
+          - ${AI_CHAT_FALLBACK_MODEL_1:qwen-turbo-2025-02-11}
+          - ${AI_CHAT_FALLBACK_MODEL_2:qwen-long}
+        exhausted-ttl: ${AI_CHAT_EXHAUSTED_TTL:PT1H}
+        transient-retries: ${AI_CHAT_TRANSIENT_RETRIES:1}
+      embedding:
+        default-model: ${AI_EMBEDDING_DEFAULT_MODEL:text-embedding-v3}
+        fallback-models: []
+        exhausted-ttl: ${AI_EMBEDDING_EXHAUSTED_TTL:PT1H}
+        transient-retries: ${AI_EMBEDDING_TRANSIENT_RETRIES:1}
 
 mybatis-plus:
   configuration:

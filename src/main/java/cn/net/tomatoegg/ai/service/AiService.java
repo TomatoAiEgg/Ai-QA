@@ -72,7 +72,7 @@ public class AiService {
         String composed = RAG_SYSTEM_PROMPT + "\n\n" + userPrompt;
 
         StringBuilder responseBuilder = new StringBuilder();
-        return qwenIntegration.chatByStream(composed)
+        return qwenIntegration.chatByStream(composed, model)
                 .flatMap(response -> Flux.just(extractText(response)))
                 .doOnNext(responseBuilder::append)
                 .doOnComplete(() -> {
@@ -93,7 +93,7 @@ public class AiService {
         String composed = NORMAL_SYSTEM_PROMPT + "\n\n【历史对话】\n" + history + "\n\n【用户问题】\n" + question;
 
         StringBuilder fullReply = new StringBuilder();
-        return qwenIntegration.chatByStream(composed)
+        return qwenIntegration.chatByStream(composed, model)
                 .flatMap(response -> Flux.just(extractText(response)))
                 .doOnNext(fullReply::append)
                 .doOnComplete(() -> {

@@ -23,7 +23,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NotLoginException.class)
     public ResponseEntity<Map<String, Object>> handleNotLogin(NotLoginException ex) {
         return ResponseEntity.status(ApiCode.UNAUTHORIZED.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.UNAUTHORIZED, "请先登录"));
+                .body(ResponseUtils.fail(ApiCode.UNAUTHORIZED, "Please login first"));
     }
 
     @ExceptionHandler(SaTokenException.class)
@@ -47,24 +47,30 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return ResponseEntity.status(ApiCode.BAD_REQUEST.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "请求参数格式不正确"));
+                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "Invalid request parameter format"));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleNotReadable(HttpMessageNotReadableException ex) {
         return ResponseEntity.status(ApiCode.BAD_REQUEST.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "请求体格式不正确"));
+                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "Invalid request body format"));
     }
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleStatus(ResponseStatusException ex) {
-        ApiCode apiCode = switch (ex.getStatusCode().value()) {
-            case 400 -> ApiCode.BAD_REQUEST;
-            case 401 -> ApiCode.UNAUTHORIZED;
-            case 403 -> ApiCode.FORBIDDEN;
-            case 404 -> ApiCode.NOT_FOUND;
-            default -> ApiCode.SERVER_ERROR;
-        };
+        int statusCode = ex.getStatusCode().value();
+        ApiCode apiCode;
+        if (statusCode == 400) {
+            apiCode = ApiCode.BAD_REQUEST;
+        } else if (statusCode == 401) {
+            apiCode = ApiCode.UNAUTHORIZED;
+        } else if (statusCode == 403) {
+            apiCode = ApiCode.FORBIDDEN;
+        } else if (statusCode == 404) {
+            apiCode = ApiCode.NOT_FOUND;
+        } else {
+            apiCode = ApiCode.SERVER_ERROR;
+        }
         String message = ex.getReason() == null ? apiCode.getMessage() : ex.getReason();
         return ResponseEntity.status(ex.getStatusCode())
                 .body(ResponseUtils.fail(apiCode, message));
@@ -72,8 +78,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleOther(Exception ex) {
-        log.error("未处理异常", ex);
+        log.error("Unhandled exception", ex);
+        String message = ex.getMessage() == null ? "Internal server error" : ex.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ResponseUtils.fail(ApiCode.SERVER_ERROR, ex.getMessage() == null ? "服务器异常" : ex.getMessage()));
+                .body(ResponseUtils.fail(ApiCode.SERVER_ERROR, message));
     }
 }

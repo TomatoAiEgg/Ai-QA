@@ -39,8 +39,8 @@ public class UuidTypeHandler extends BaseTypeHandler<UUID> {
         if (value == null) {
             return null;
         }
-        if (value instanceof UUID uuid) {
-            return uuid;
+        if (value instanceof UUID) {
+            return (UUID) value;
         }
         return UUID.fromString(value.toString());
     }

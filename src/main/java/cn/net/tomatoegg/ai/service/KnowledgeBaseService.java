@@ -15,7 +15,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.cache.annotation.CacheEvict;
@@ -43,20 +42,20 @@ public class KnowledgeBaseService {
     private static final Path STORAGE_ROOT = Paths.get("data", "kb-files");
 
     private final TokenTextSplitter tokenTextSplitter;
-    private final EmbeddingModel embeddingModel;
+    private final DashScopeEmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeBaseDocumentMapper documentMapper;
     private final VectorStoreMapper vectorStoreMapper;
 
     public KnowledgeBaseService(TokenTextSplitter tokenTextSplitter,
-                                EmbeddingModel embeddingModel,
+                                DashScopeEmbeddingService embeddingService,
                                 ObjectMapper objectMapper,
                                 KnowledgeBaseMapper knowledgeBaseMapper,
                                 KnowledgeBaseDocumentMapper documentMapper,
                                 VectorStoreMapper vectorStoreMapper) {
         this.tokenTextSplitter = tokenTextSplitter;
-        this.embeddingModel = embeddingModel;
+        this.embeddingService = embeddingService;
         this.objectMapper = objectMapper;
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.documentMapper = documentMapper;
@@ -118,7 +117,7 @@ public class KnowledgeBaseService {
                         i,
                         document.getContent(),
                         toMetadataJson(document.getMetadata()),
-                        toVectorLiteral(embeddingModel.embed(document))
+                        toVectorLiteral(embeddingService.embed(document))
                 );
             }
 
@@ -156,7 +155,7 @@ public class KnowledgeBaseService {
     }
 
     public List<Document> searchFromKnowledgeBase(String query, UUID kbId, int topK, UUID userId) {
-        String queryEmbedding = toVectorLiteral(embeddingModel.embed(query));
+        String queryEmbedding = toVectorLiteral(embeddingService.embed(query));
         List<VectorStoreChunk> chunks;
         if (kbId != null) {
             requireOwnedKnowledgeBase(userId, kbId);
@@ -217,14 +216,14 @@ public class KnowledgeBaseService {
     })
     public void deleteDocument(UUID docId, UUID userId) {
         KnowledgeBaseDocument document = requireOwnedDocument(userId, docId);
-        vectorStoreMapper.deleteByDocumentId(docId.toString());
+        vectorStoreMapper.deleteByDocumentId(docId);
         deleteStoredFile(document.getStoragePath());
         documentMapper.deleteById(docId);
         log.info("删除文档成功, userId={}, kbId={}, docId={}, filename={}", userId, document.getKbId(), docId, document.getFilename());
     }
 
     public void deleteKnowledgeBaseVectors(UUID kbId) {
-        vectorStoreMapper.deleteByKnowledgeBaseId(kbId.toString());
+        vectorStoreMapper.deleteByKnowledgeBaseId(kbId);
         log.info("删除知识库向量数据成功, kbId={}", kbId);
     }
 

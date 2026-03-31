@@ -15,12 +15,10 @@ import java.util.UUID;
 @Mapper
 public interface VectorStoreMapper {
 
-    @Insert("""
-            INSERT INTO vector_store_1024_v2
-            (id, user_id, kb_id, doc_id, chunk_index, content, metadata, embedding)
-            VALUES
-            (#{id}, #{userId}, #{kbId}, #{docId}, #{chunkIndex}, #{content}, CAST(#{metadataJson} AS jsonb), CAST(#{embedding} AS vector))
-            """)
+    @Insert("INSERT INTO vector_store_1024_v2 "
+            + "(id, user_id, kb_id, doc_id, chunk_index, content, metadata, embedding) "
+            + "VALUES "
+            + "(#{id}, #{userId}, #{kbId}, #{docId}, #{chunkIndex}, #{content}, CAST(#{metadataJson} AS jsonb), CAST(#{embedding} AS vector))")
     void insertChunk(@Param("id") UUID id,
                      @Param("userId") UUID userId,
                      @Param("kbId") UUID kbId,
@@ -30,16 +28,12 @@ public interface VectorStoreMapper {
                      @Param("metadataJson") String metadataJson,
                      @Param("embedding") String embedding);
 
-    @Select("""
-            SELECT
-                content,
-                metadata::text AS metadata_json,
-                1 - (embedding <=> CAST(#{embedding} AS vector)) AS score
-            FROM vector_store_1024_v2
-            WHERE kb_id = #{kbId}
-            ORDER BY embedding <=> CAST(#{embedding} AS vector)
-            LIMIT #{topK}
-            """)
+    @Select("SELECT content, metadata::text AS metadata_json, "
+            + "1 - (embedding <=> CAST(#{embedding} AS vector)) AS score "
+            + "FROM vector_store_1024_v2 "
+            + "WHERE kb_id = #{kbId} "
+            + "ORDER BY embedding <=> CAST(#{embedding} AS vector) "
+            + "LIMIT #{topK}")
     @Results({
             @Result(column = "content", property = "content"),
             @Result(column = "metadata_json", property = "metadataJson"),
@@ -49,16 +43,12 @@ public interface VectorStoreMapper {
                                                    @Param("embedding") String embedding,
                                                    @Param("topK") int topK);
 
-    @Select("""
-            SELECT
-                content,
-                metadata::text AS metadata_json,
-                1 - (embedding <=> CAST(#{embedding} AS vector)) AS score
-            FROM vector_store_1024_v2
-            WHERE user_id = #{userId}
-            ORDER BY embedding <=> CAST(#{embedding} AS vector)
-            LIMIT #{topK}
-            """)
+    @Select("SELECT content, metadata::text AS metadata_json, "
+            + "1 - (embedding <=> CAST(#{embedding} AS vector)) AS score "
+            + "FROM vector_store_1024_v2 "
+            + "WHERE user_id = #{userId} "
+            + "ORDER BY embedding <=> CAST(#{embedding} AS vector) "
+            + "LIMIT #{topK}")
     @Results({
             @Result(column = "content", property = "content"),
             @Result(column = "metadata_json", property = "metadataJson"),
@@ -69,8 +59,8 @@ public interface VectorStoreMapper {
                                           @Param("topK") int topK);
 
     @Delete("DELETE FROM vector_store_1024_v2 WHERE kb_id = #{kbId}")
-    void deleteByKnowledgeBaseId(String kbId);
+    void deleteByKnowledgeBaseId(@Param("kbId") UUID kbId);
 
     @Delete("DELETE FROM vector_store_1024_v2 WHERE doc_id = #{docId}")
-    void deleteByDocumentId(String docId);
+    void deleteByDocumentId(@Param("docId") UUID docId);
 }
