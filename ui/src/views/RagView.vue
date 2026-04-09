@@ -3,13 +3,13 @@
     <div class="rag-modal">
       <div class="rag-header">
         <div>
-          <div class="page-eyebrow">Knowledge Workspace</div>
+          <div class="page-eyebrow">知识库工作台</div>
           <h1 class="page-title">知识库管理</h1>
         </div>
         <el-button class="close-btn" :icon="Close" circle @click="closeRagModal" />
       </div>
 
-      <div class="section" v-if="!showDocDialog">
+      <div v-if="!showDocDialog" class="section">
         <div class="section-header">
           <el-icon><Folder /></el-icon>
           <span class="section-title">知识库列表</span>
@@ -19,7 +19,7 @@
           <div class="kb-card create-card" @click="openCreateDialog">
             <el-icon class="create-icon"><Plus /></el-icon>
             <div class="create-title">创建知识库</div>
-            <div class="create-subtitle">新建一个专门的资料空间</div>
+            <div class="create-subtitle">为检索文档创建专属资料空间</div>
           </div>
 
           <div
@@ -92,7 +92,7 @@
               <span class="summary-stat-value">{{ documents.length }}</span>
             </div>
             <div class="summary-stat">
-              <span class="summary-stat-label">切片总数</span>
+              <span class="summary-stat-label">切片数量</span>
               <span class="summary-stat-value">{{ totalChunkCount }}</span>
             </div>
             <div class="summary-stat">
@@ -106,7 +106,7 @@
           ref="fileInputRef"
           type="file"
           class="hidden-file-input"
-          accept=".txt,.md,.pdf,.docx"
+          accept=".txt,.md,.pdf,.doc,.docx"
           @change="handleFileSelect"
         />
 
@@ -118,35 +118,35 @@
           <div class="panel-header">
             <div>
               <div class="panel-title">文档列表</div>
-              <div class="panel-subtitle">保留文档相关字段，方便管理、预览和排查。</div>
+              <div class="panel-subtitle">查看处理状态、预览切片，并对失败的文档重新处理。</div>
             </div>
           </div>
 
-          <el-table :data="documents" style="width: 100%" v-loading="loadingDocs">
-            <el-table-column label="文件信息" min-width="300">
+          <el-table v-loading="loadingDocs" :data="documents" style="width: 100%">
+            <el-table-column label="文件信息" min-width="320">
               <template #default="{ row }">
                 <div class="doc-file-cell">
                   <div class="doc-file-icon">{{ getFileIcon(row.filename) }}</div>
                   <div class="doc-file-info">
                     <div class="doc-file-name">{{ row.filename }}</div>
                     <div class="doc-file-meta">文件哈希：{{ row.fileHash || '-' }}</div>
-                    <div class="doc-file-meta" v-if="row.errorMessage">错误信息：{{ row.errorMessage }}</div>
+                    <div v-if="row.errorMessage" class="doc-file-meta">错误信息：{{ row.errorMessage }}</div>
                   </div>
                 </div>
               </template>
             </el-table-column>
 
-            <el-table-column label="状态" width="110">
+            <el-table-column label="状态" width="120">
               <template #default="{ row }">
                 <el-tag :type="getStatusType(row.status)" size="small">
-                  {{ getStatusText(row.status) }}
+                  {{ documentStatusLabel(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
 
             <el-table-column label="切片数" width="100" prop="chunkCount" />
 
-            <el-table-column label="文件大小" width="110">
+            <el-table-column label="文件大小" width="120">
               <template #default="{ row }">
                 {{ formatFileSize(row.fileSize) }}
               </template>
@@ -164,47 +164,60 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="操作" width="170" fixed="right">
+            <el-table-column label="操作" width="240" fixed="right">
               <template #default="{ row }">
-                <el-button size="small" @click="showPreview(row)">
-                  <el-icon><View /></el-icon>
-                  预览
-                </el-button>
-                <el-button size="small" type="danger" @click="handleDeleteDoc(row)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
+                <div class="doc-action-group">
+                  <el-button size="small" @click="showPreview(row)">
+                    <el-icon><View /></el-icon>
+                    预览
+                  </el-button>
+                  <el-button
+                    v-if="row.status === 'FAILED'"
+                    size="small"
+                    type="warning"
+                    @click="handleRetryDoc(row)"
+                  >
+                    重试
+                  </el-button>
+                  <el-button size="small" type="danger" @click="handleDeleteDoc(row)">
+                    <el-icon><Delete /></el-icon>
+                    删除
+                  </el-button>
+                </div>
               </template>
             </el-table-column>
           </el-table>
 
           <div v-if="documents.length === 0 && !loadingDocs" class="empty-state">
-            <el-empty description="这里还没有文档，先上传一份资料试试" />
+            <el-empty description="当前还没有文档，先上传一个开始构建知识库。" />
           </div>
         </div>
       </div>
 
       <el-dialog
         v-model="showCreateDialog"
-        :title="editingKb ? '修改知识库' : '创建知识库'"
+        :title="editingKb ? '编辑知识库' : '创建知识库'"
         width="500px"
         :close-on-click-modal="false"
       >
-        <el-form :model="kbForm" label-width="80px">
+        <el-form :model="kbForm" label-width="100px">
           <el-form-item label="名称" required>
-            <el-input v-model="kbForm.name" placeholder="例如：公司制度、产品手册、FAQ" />
+            <el-input v-model="kbForm.name" placeholder="例如：产品手册、员工手册、内部 FAQ" />
           </el-form-item>
           <el-form-item label="描述">
             <el-input
               v-model="kbForm.description"
               type="textarea"
               :rows="3"
-              placeholder="简单描述一下这个知识库里准备存什么内容"
+              placeholder="简单说明这个知识库准备存放哪些内容。"
             />
           </el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="showCreateDialog = false">取消</el-button>
-          <el-button type="primary" @click="submitKbForm">{{ editingKb ? '保存' : '创建' }}</el-button>
+          <el-button type="primary" @click="submitKbForm">
+            {{ editingKb ? '保存' : '创建' }}
+          </el-button>
         </template>
       </el-dialog>
 
@@ -214,14 +227,16 @@
         width="820px"
       >
         <div v-if="previewStats" class="preview-stats">
-          <el-tag type="info" size="small">共 {{ previewStats.total }} 个片段</el-tag>
-          <el-tag type="info" size="small">平均长度 {{ previewStats.avgLength }} 字符</el-tag>
-          <el-tag type="info" size="small">最小 {{ previewStats.minLength }} / 最大 {{ previewStats.maxLength }}</el-tag>
+          <el-tag type="info" size="small">切片数：{{ previewStats.total }}</el-tag>
+          <el-tag type="info" size="small">平均长度：{{ previewStats.avgLength }}</el-tag>
+          <el-tag type="info" size="small">
+            长度范围：{{ previewStats.minLength }} - {{ previewStats.maxLength }}
+          </el-tag>
         </div>
         <div class="preview-chunks">
           <div v-for="chunk in previewChunks" :key="chunk.index" class="chunk-item">
             <div class="chunk-header">
-              <span>片段 #{{ chunk.index + 1 }}</span>
+              <span>切片 #{{ chunk.index + 1 }}</span>
               <span>{{ chunk.length }} 字符</span>
             </div>
             <div class="chunk-content">{{ chunk.content }}</div>
@@ -233,32 +248,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import * as api from '../api.js'
 import { Back, Close, Delete, Edit, Folder, Plus, Upload, View } from '@element-plus/icons-vue'
+import * as api from '../api.js'
 
 const emit = defineEmits(['close'])
 
-const knowledgeBases = ref([])
-const documents = ref([])
-const currentKb = ref(null)
-const editingKb = ref(null)
-const loadingDocs = ref(false)
-const showCreateDialog = ref(false)
-const showDocDialog = ref(false)
-const showPreviewDialog = ref(false)
-const fileInputRef = ref(null)
-
-const kbForm = reactive({
-  name: '',
-  description: ''
-})
-
-const uploadStatus = ref(null)
-const previewDoc = ref(null)
-const previewChunks = ref([])
-const previewStats = ref(null)
+const ACTIVE_DOCUMENT_STATUSES = new Set(['PENDING', 'PROCESSING'])
+const DOCUMENT_STATUS_META = {
+  PENDING: { label: '排队中', type: 'info' },
+  PROCESSING: { label: '处理中', type: 'warning' },
+  COMPLETED: { label: '已完成', type: 'success' },
+  FAILED: { label: '失败', type: 'danger' }
+}
 
 const gradients = [
   'linear-gradient(135deg, #5b8def 0%, #83b6ff 100%)',
@@ -269,207 +272,351 @@ const gradients = [
   'linear-gradient(135deg, #db2777 0%, #f9a8d4 100%)'
 ]
 
+const knowledgeBases = ref([])
+const documents = ref([])
+const currentKb = ref(null)
+const editingKb = ref(null)
+const loadingDocs = ref(false)
+const showCreateDialog = ref(false)
+const showDocDialog = ref(false)
+const showPreviewDialog = ref(false)
+const fileInputRef = ref(null)
+const uploadStatus = ref(null)
+const previewDoc = ref(null)
+const previewChunks = ref([])
+const previewStats = ref(null)
+
+const kbForm = reactive({
+  name: '',
+  description: ''
+})
+
+let documentPollingTimer = null
+
 const totalChunkCount = computed(() => documents.value.reduce((sum, doc) => sum + (doc.chunkCount || 0), 0))
 const totalFileSize = computed(() => formatFileSize(documents.value.reduce((sum, doc) => sum + (doc.fileSize || 0), 0)))
+
+function getErrorMessage(error, fallback = '操作失败') {
+  return error?.message || fallback
+}
 
 onMounted(() => {
   loadKnowledgeBases()
 })
 
-const getGradientById = (id) => {
+onUnmounted(() => {
+  stopDocumentPolling()
+})
+
+function getGradientById(id) {
   const raw = String(id || 'default')
   let hash = 0
-  for (let i = 0; i < raw.length; i++) {
-    hash = ((hash << 5) - hash) + raw.charCodeAt(i)
+  for (let index = 0; index < raw.length; index += 1) {
+    hash = ((hash << 5) - hash) + raw.charCodeAt(index)
     hash &= hash
   }
   return gradients[Math.abs(hash) % gradients.length]
 }
 
-const getKbBadgeStyle = (id) => ({
-  background: getGradientById(id)
-})
+function getKbBadgeStyle(id) {
+  return { background: getGradientById(id) }
+}
 
-const getKbMonogram = (name) => {
-  const safeName = (name || '知识库').trim().replace(/\s+/g, '')
-  if (!safeName) return 'KB'
-  if (/[\u4e00-\u9fa5]/.test(safeName)) return safeName.slice(0, 2)
+function getKbMonogram(name) {
+  const safeName = String(name || '知识库').trim().replace(/\s+/g, '')
+  if (!safeName) {
+    return 'KB'
+  }
+  if (/[\u4e00-\u9fa5]/.test(safeName)) {
+    return safeName.slice(0, 2)
+  }
   return safeName.slice(0, 2).toUpperCase()
 }
 
-const loadKnowledgeBases = async () => {
+async function loadKnowledgeBases() {
   try {
-    knowledgeBases.value = await api.getKnowledgeBases()
+    const items = await api.getKnowledgeBases()
+    knowledgeBases.value = items
+    syncCurrentKnowledgeBase()
     window.dispatchEvent(new CustomEvent('knowledge-bases-updated'))
   } catch (error) {
-    ElMessage.error('加载知识库列表失败：' + error.message)
+    ElMessage.error(getErrorMessage(error, '加载知识库失败'))
   }
 }
 
-const openCreateDialog = () => {
+function syncCurrentKnowledgeBase() {
+  if (!currentKb.value) {
+    return
+  }
+  const latest = knowledgeBases.value.find(item => item.id === currentKb.value.id)
+  if (latest) {
+    currentKb.value = latest
+  }
+}
+
+function stopDocumentPolling() {
+  if (documentPollingTimer) {
+    window.clearTimeout(documentPollingTimer)
+    documentPollingTimer = null
+  }
+}
+
+function refreshDocumentPolling() {
+  stopDocumentPolling()
+  if (!showDocDialog.value || !documents.value.some(doc => ACTIVE_DOCUMENT_STATUSES.has(doc.status))) {
+    return
+  }
+  documentPollingTimer = window.setTimeout(async () => {
+    const reloaded = await loadDocuments(true)
+    if (reloaded) {
+      await loadKnowledgeBases()
+    }
+  }, 3000)
+}
+
+function openCreateDialog() {
   editingKb.value = null
   kbForm.name = ''
   kbForm.description = ''
   showCreateDialog.value = true
 }
 
-const openEditDialog = (kb) => {
+function openEditDialog(kb) {
   editingKb.value = kb
   kbForm.name = kb.name || ''
   kbForm.description = kb.description || ''
   showCreateDialog.value = true
 }
 
-const submitKbForm = async () => {
-  if (!kbForm.name.trim()) {
+async function submitKbForm() {
+  const name = kbForm.name.trim()
+  const description = kbForm.description.trim()
+
+  if (!name) {
     ElMessage.warning('请输入知识库名称')
     return
   }
 
   try {
     if (editingKb.value) {
-      await api.updateKnowledgeBase(editingKb.value.id, kbForm.name.trim(), kbForm.description.trim())
+      await api.updateKnowledgeBase(editingKb.value.id, name, description)
       ElMessage.success('知识库已更新')
     } else {
-      await api.createKnowledgeBase(kbForm.name.trim(), kbForm.description.trim())
+      await api.createKnowledgeBase(name, description)
       ElMessage.success('知识库创建成功')
     }
     showCreateDialog.value = false
     await loadKnowledgeBases()
   } catch (error) {
-    ElMessage.error((editingKb.value ? '更新失败：' : '创建失败：') + error.message)
+    ElMessage.error(getErrorMessage(error, editingKb.value ? '更新知识库失败' : '创建知识库失败'))
   }
 }
 
-const handleDeleteKb = async (kb) => {
+async function handleDeleteKb(kb) {
   try {
-    await ElMessageBox.confirm(`确定删除“${kb.name}”吗？此操作不可恢复。`, '警告', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
+    await ElMessageBox.confirm(
+      `确定删除“${kb.name}”吗？此操作不可恢复。`,
+      '警告',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
     await api.deleteKnowledgeBase(kb.id)
     ElMessage.success('知识库已删除')
     await loadKnowledgeBases()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败：' + error.message)
+      ElMessage.error(getErrorMessage(error, '删除知识库失败'))
     }
   }
 }
 
-const openDocModal = async (kb) => {
+async function openDocModal(kb) {
   currentKb.value = kb
+  documents.value = []
   uploadStatus.value = null
   showDocDialog.value = true
   await loadDocuments()
 }
 
-const closeDocDialog = () => {
-  showDocDialog.value = false
+function closeDocDialog() {
+  stopDocumentPolling()
+  documents.value = []
   currentKb.value = null
+  uploadStatus.value = null
+  showDocDialog.value = false
 }
 
-const loadDocuments = async () => {
-  if (!currentKb.value) return
-  loadingDocs.value = true
+async function loadDocuments(silent = false) {
+  if (!currentKb.value) {
+    return false
+  }
+
+  if (!silent) {
+    loadingDocs.value = true
+  }
+
   try {
     documents.value = await api.getDocumentsByKbId(currentKb.value.id)
-    const kb = knowledgeBases.value.find(item => item.id === currentKb.value.id)
-    if (kb) kb.documentCount = documents.value.length
+    updateDocumentCount(currentKb.value.id, documents.value.length)
+    refreshDocumentPolling()
+    return true
   } catch (error) {
-    ElMessage.error('加载文档列表失败：' + error.message)
+    stopDocumentPolling()
+    if (!silent) {
+      ElMessage.error(getErrorMessage(error, '加载文档失败'))
+    }
+    return false
   } finally {
-    loadingDocs.value = false
+    if (!silent) {
+      loadingDocs.value = false
+    }
   }
 }
 
-const triggerFileSelect = () => {
+function updateDocumentCount(kbId, count) {
+  const kb = knowledgeBases.value.find(item => item.id === kbId)
+  if (kb) {
+    kb.documentCount = count
+  }
+  if (currentKb.value?.id === kbId) {
+    currentKb.value = {
+      ...currentKb.value,
+      documentCount: count
+    }
+  }
+}
+
+function triggerFileSelect() {
   fileInputRef.value?.click()
 }
 
-const handleFileSelect = (event) => {
-  const file = event.target.files[0]
-  if (file) uploadFile(file)
-  if (fileInputRef.value) fileInputRef.value.value = ''
+function handleFileSelect(event) {
+  const file = event.target.files?.[0]
+  if (file) {
+    uploadFile(file)
+  }
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
 }
 
-const uploadFile = async (file) => {
-  if (!currentKb.value) return
-  uploadStatus.value = { type: 'loading', message: '正在上传并处理文档...' }
+async function uploadFile(file) {
+  if (!currentKb.value) {
+    return
+  }
+
+  uploadStatus.value = { type: 'loading', message: `正在上传 ${file.name}...` }
   try {
     const result = await api.uploadDocument(file, currentKb.value.id)
     uploadStatus.value = { type: 'success', message: result }
     await loadDocuments()
     await loadKnowledgeBases()
   } catch (error) {
-    uploadStatus.value = { type: 'error', message: '上传失败：' + error.message }
+    uploadStatus.value = { type: 'error', message: getErrorMessage(error, '上传失败') }
   }
 }
 
-const showPreview = async (doc) => {
+async function handleRetryDoc(doc) {
   try {
-    previewDoc.value = doc
-    const chunks = await api.previewDocument(doc.id)
-    previewChunks.value = chunks.map((chunk, index) => ({
-      index: chunk.index ?? index,
-      content: chunk.content,
-      length: chunk.length
-    }))
-    previewStats.value = buildPreviewStats(previewChunks.value)
-    showPreviewDialog.value = true
+    uploadStatus.value = { type: 'loading', message: `正在重试 ${doc.filename}...` }
+    const result = await api.retryDocument(doc.id)
+    uploadStatus.value = { type: 'success', message: result }
+    await loadDocuments()
+    await loadKnowledgeBases()
   } catch (error) {
-    ElMessage.error('文档预览失败：' + error.message)
+    uploadStatus.value = { type: 'error', message: getErrorMessage(error, '重试失败') }
   }
 }
 
-const buildPreviewStats = (chunks) => {
-  if (!chunks.length) return { total: 0, avgLength: 0, minLength: 0, maxLength: 0 }
+async function showPreview(doc) {
+  try {
+    const previewUrl = api.getDocumentPreviewUrl(doc.id)
+    const link = document.createElement('a')
+    link.href = previewUrl
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.click()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '预览文档失败'))
+  }
+}
+
+function buildPreviewStats(chunks) {
+  if (!chunks.length) {
+    return { total: 0, avgLength: 0, minLength: 0, maxLength: 0 }
+  }
+
   const lengths = chunks.map(chunk => chunk.length)
-  const total = lengths.reduce((sum, length) => sum + length, 0)
+  const totalLength = lengths.reduce((sum, length) => sum + length, 0)
   return {
     total: chunks.length,
-    avgLength: Math.round(total / chunks.length),
+    avgLength: Math.round(totalLength / chunks.length),
     minLength: Math.min(...lengths),
     maxLength: Math.max(...lengths)
   }
 }
 
-const handleDeleteDoc = async (doc) => {
+async function handleDeleteDoc(doc) {
   try {
-    await ElMessageBox.confirm(`确定删除文档“${doc.filename}”吗？`, '警告', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
+    await ElMessageBox.confirm(
+      `确定删除文档“${doc.filename}”吗？此操作不可恢复。`,
+      '警告',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
     await api.deleteDocument(doc.id)
     ElMessage.success('文档已删除')
     await loadDocuments()
     await loadKnowledgeBases()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败：' + error.message)
+      ElMessage.error(getErrorMessage(error, '删除文档失败'))
     }
   }
 }
 
-const closeRagModal = () => emit('close')
+function closeRagModal() {
+  stopDocumentPolling()
+  emit('close')
+}
 
-const getFileIcon = (filename) => {
-  const ext = filename.split('.').pop()?.toLowerCase() || 'file'
-  const icons = { pdf: 'PDF', doc: 'DOC', docx: 'DOC', txt: 'TXT', md: 'MD', xls: 'XLS', xlsx: 'XLS', csv: 'CSV', ppt: 'PPT', pptx: 'PPT' }
+function getFileIcon(filename) {
+  const ext = filename?.split('.').pop()?.toLowerCase() || 'file'
+  const icons = {
+    pdf: 'PDF',
+    doc: 'DOC',
+    docx: 'DOC',
+    txt: 'TXT',
+    md: 'MD',
+    xls: 'XLS',
+    xlsx: 'XLS',
+    csv: 'CSV',
+    ppt: 'PPT',
+    pptx: 'PPT'
+  }
   return icons[ext] || 'FILE'
 }
 
-const formatFileSize = (bytes) => {
-  if (!bytes || bytes === 0) return '0 B'
+function formatFileSize(bytes) {
+  if (!bytes || bytes === 0) {
+    return '0 B'
+  }
   const units = ['B', 'KB', 'MB', 'GB']
-  const index = Math.floor(Math.log(bytes) / Math.log(1024))
-  return Math.round((bytes / Math.pow(1024, index)) * 100) / 100 + ' ' + units[index]
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / Math.pow(1024, index)
+  return `${Math.round(value * 100) / 100} ${units[index]}`
 }
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
+function formatDate(dateStr) {
+  if (!dateStr) {
+    return '-'
+  }
   return new Date(dateStr).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -479,8 +626,13 @@ const formatDate = (dateStr) => {
   })
 }
 
-const getStatusType = (status) => ({ PROCESSING: 'warning', COMPLETED: 'success', FAILED: 'danger' }[status] || 'info')
-const getStatusText = (status) => ({ PROCESSING: '处理中', COMPLETED: '已完成', FAILED: '失败' }[status] || status)
+function getStatusType(status) {
+  return DOCUMENT_STATUS_META[status]?.type || 'info'
+}
+
+function documentStatusLabel(status) {
+  return DOCUMENT_STATUS_META[status]?.label || status
+}
 </script>
 
 <style scoped>
@@ -939,6 +1091,12 @@ const getStatusText = (status) => ({ PROCESSING: '处理中', COMPLETED: '已完
   font-size: 12px;
   line-height: 1.6;
   word-break: break-all;
+}
+
+.doc-action-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .empty-state {

@@ -1,6 +1,7 @@
 package cn.net.tomatoegg.ai.mapper;
 
 import cn.net.tomatoegg.ai.entity.VectorStoreChunk;
+import cn.net.tomatoegg.ai.mapper.param.VectorStoreChunkInsertParam;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -27,6 +28,19 @@ public interface VectorStoreMapper {
                      @Param("content") String content,
                      @Param("metadataJson") String metadataJson,
                      @Param("embedding") String embedding);
+
+    @Insert({
+            "<script>",
+            "INSERT INTO vector_store_1024_v2 ",
+            "(id, user_id, kb_id, doc_id, chunk_index, content, metadata, embedding) ",
+            "VALUES ",
+            "<foreach collection='items' item='item' separator=','>",
+            "(#{item.id}, #{item.userId}, #{item.kbId}, #{item.docId}, #{item.chunkIndex}, ",
+            "#{item.content}, CAST(#{item.metadataJson} AS jsonb), CAST(#{item.embedding} AS vector))",
+            "</foreach>",
+            "</script>"
+    })
+    void batchInsertChunks(@Param("items") List<VectorStoreChunkInsertParam> items);
 
     @Select("SELECT content, metadata::text AS metadata_json, "
             + "1 - (embedding <=> CAST(#{embedding} AS vector)) AS score "

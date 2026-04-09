@@ -1,4 +1,4 @@
-package cn.net.tomatoegg.ai.service;
+package cn.net.tomatoegg.ai.service.model;
 
 import cn.net.tomatoegg.ai.config.ModelRouterProperties;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +34,14 @@ public class ModelRouterService {
 
     public List<String> getEmbeddingCandidates() {
         return buildCandidates(EMBEDDING_TYPE, null, properties.getEmbedding());
+    }
+
+    public String getDefaultChatModel() {
+        return resolveDefaultModel(properties.getChat(), "qwen");
+    }
+
+    public String getDefaultEmbeddingModel() {
+        return resolveDefaultModel(properties.getEmbedding(), "text-embedding-v3");
     }
 
     public int getChatTransientRetries() {
@@ -114,6 +122,20 @@ public class ModelRouterService {
             return null;
         }
         return trimmed;
+    }
+
+    private String resolveDefaultModel(ModelRouterProperties.RouteProperties routeProperties, String fallback) {
+        if (routeProperties.getDefaultModel() != null && !routeProperties.getDefaultModel().isBlank()) {
+            return routeProperties.getDefaultModel().trim();
+        }
+        if (routeProperties.getFallbackModels() != null) {
+            for (String model : routeProperties.getFallbackModels()) {
+                if (model != null && !model.isBlank()) {
+                    return model.trim();
+                }
+            }
+        }
+        return fallback;
     }
 
     private boolean isMarkedExhausted(String type, String model) {

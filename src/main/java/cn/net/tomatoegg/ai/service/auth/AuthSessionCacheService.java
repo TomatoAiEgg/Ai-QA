@@ -1,4 +1,4 @@
-package cn.net.tomatoegg.ai.service;
+package cn.net.tomatoegg.ai.service.auth;
 
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;

@@ -1,10 +1,10 @@
-package cn.net.tomatoegg.ai.controller;
+package cn.net.tomatoegg.ai.controller.openapi;
 
 import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.common.ResponseUtils;
 import cn.net.tomatoegg.ai.exception.BusinessException;
-import cn.net.tomatoegg.ai.service.AuthService;
-import cn.net.tomatoegg.ai.service.OpenApiTokenService;
+import cn.net.tomatoegg.ai.service.auth.AuthService;
+import cn.net.tomatoegg.ai.service.openapi.OpenApiTokenService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;

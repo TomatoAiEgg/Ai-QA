@@ -1,12 +1,10 @@
-package cn.net.tomatoegg.ai.controller;
+package cn.net.tomatoegg.ai.controller.knowledgebase;
 
 import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.common.ResponseUtils;
-import cn.net.tomatoegg.ai.entity.KnowledgeBase;
-import cn.net.tomatoegg.ai.entity.KnowledgeBaseDocument;
 import cn.net.tomatoegg.ai.exception.BusinessException;
-import cn.net.tomatoegg.ai.service.AuthService;
-import cn.net.tomatoegg.ai.service.KnowledgeBaseManagementService;
+import cn.net.tomatoegg.ai.service.auth.AuthService;
+import cn.net.tomatoegg.ai.service.knowledgebase.KnowledgeBaseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,7 +23,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class KnowledgeBaseController {
 
-    private final KnowledgeBaseManagementService kbService;
+    private final KnowledgeBaseService kbService;
     private final AuthService authService;
 
     @PostMapping

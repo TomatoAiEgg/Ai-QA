@@ -1,13 +1,12 @@
 package cn.net.tomatoegg.ai.integration;
 
-import cn.net.tomatoegg.ai.service.ModelRouterService;
+import cn.net.tomatoegg.ai.service.model.ModelRouterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -19,14 +18,11 @@ public class QwenIntegration {
 
     private final ObjectProvider<OpenAiChatModel> openAiChatModelProvider;
     private final ModelRouterService modelRouterService;
-    private final String configuredModel;
 
     public QwenIntegration(ObjectProvider<OpenAiChatModel> openAiChatModelProvider,
-                           ModelRouterService modelRouterService,
-                           @Value("${spring.ai.openai.chat.options.model:}") String configuredModel) {
+                           ModelRouterService modelRouterService) {
         this.openAiChatModelProvider = openAiChatModelProvider;
         this.modelRouterService = modelRouterService;
-        this.configuredModel = configuredModel;
     }
 
     public boolean isEnabled() {
@@ -43,10 +39,7 @@ public class QwenIntegration {
     }
 
     public String getConfiguredModelName() {
-        if (configuredModel == null || configuredModel.isBlank()) {
-            return "qwen";
-        }
-        return configuredModel;
+        return modelRouterService.getDefaultChatModel();
     }
 
     private Flux<ChatResponse> streamWithFallback(OpenAiChatModel chatModel,

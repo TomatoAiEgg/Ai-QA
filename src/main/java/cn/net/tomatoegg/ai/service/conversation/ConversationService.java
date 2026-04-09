@@ -1,4 +1,4 @@
-package cn.net.tomatoegg.ai.service;
+package cn.net.tomatoegg.ai.service.conversation;
 
 import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.entity.Conversation;
@@ -16,10 +16,17 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
 public class ConversationService {
+
+    private static final String DEFAULT_CONVERSATION_TITLE = "新的对话";
+    private static final List<String> PLACEHOLDER_TITLES = List.of(
+            DEFAULT_CONVERSATION_TITLE,
+            "New Chat"
+    );
 
     private final ConversationMapper conversationMapper;
     private final ConversationMessageMapper messageMapper;
@@ -30,7 +37,7 @@ public class ConversationService {
     }
 
     @Caching(evict = {
-            @CacheEvict(value = "conversationListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "conversationListCache", key = "#userId.toString() + ':v2'"),
             @CacheEvict(value = "conversationMessagesCache", allEntries = true)
     })
     public UUID createConversation(UUID userId, String title) {
@@ -38,13 +45,13 @@ public class ConversationService {
         conversationMapper.insert(Conversation.builder()
                 .id(id)
                 .userId(userId)
-                .title(title)
+                .title(normalizeTitle(title))
                 .build());
         return id;
     }
 
     @Caching(evict = {
-            @CacheEvict(value = "conversationListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "conversationListCache", key = "#userId.toString() + ':v2'"),
             @CacheEvict(value = "conversationMessagesCache", allEntries = true)
     })
     public void renameConversation(UUID userId, UUID id, String title) {
@@ -52,12 +59,12 @@ public class ConversationService {
         conversationMapper.update(null, new LambdaUpdateWrapper<Conversation>()
                 .eq(Conversation::getId, id)
                 .eq(Conversation::getUserId, userId)
-                .set(Conversation::getTitle, title)
+                .set(Conversation::getTitle, normalizeTitle(title))
                 .setSql("updated_at = NOW()"));
     }
 
     @Caching(evict = {
-            @CacheEvict(value = "conversationListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "conversationListCache", key = "#userId.toString() + ':v2'"),
             @CacheEvict(value = "conversationMessagesCache", allEntries = true)
     })
     public void deleteConversation(UUID userId, UUID id) {
@@ -67,32 +74,34 @@ public class ConversationService {
                 .eq(Conversation::getUserId, userId));
     }
 
-    @Cacheable(value = "conversationListCache", key = "#userId.toString()")
+    @Cacheable(value = "conversationListCache", key = "#userId.toString() + ':v2'")
     public List<Conversation> listConversations(UUID userId) {
-        return conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
+        List<Conversation> conversations = conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
                 .eq(Conversation::getUserId, userId)
                 .orderByDesc(Conversation::getUpdatedAt));
+        repairConversationTitles(userId, conversations);
+        return conversations;
     }
 
     @Caching(evict = {
-            @CacheEvict(value = "conversationListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "conversationListCache", key = "#userId.toString() + ':v2'"),
             @CacheEvict(value = "conversationMessagesCache", allEntries = true)
     })
     public void addUserMessage(UUID userId, UUID conversationId, String content) {
         addMessage(userId, conversationId, "USER", content);
+        String conversationTitle = buildConversationTitle(content);
         conversationMapper.update(null, new LambdaUpdateWrapper<Conversation>()
                 .eq(Conversation::getId, conversationId)
                 .eq(Conversation::getUserId, userId)
                 .and(wrapper -> wrapper.isNull(Conversation::getTitle)
                         .or().eq(Conversation::getTitle, "")
-                        .or().eq(Conversation::getTitle, "新的对话")
-                        .or().eq(Conversation::getTitle, "New Chat"))
-                .set(Conversation::getTitle, content)
+                        .or().in(Conversation::getTitle, PLACEHOLDER_TITLES))
+                .set(Conversation::getTitle, conversationTitle)
                 .setSql("updated_at = NOW()"));
     }
 
     @Caching(evict = {
-            @CacheEvict(value = "conversationListCache", key = "#userId.toString()"),
+            @CacheEvict(value = "conversationListCache", key = "#userId.toString() + ':v2'"),
             @CacheEvict(value = "conversationMessagesCache", allEntries = true)
     })
     public void addAssistantMessage(UUID userId, UUID conversationId, String content) {
@@ -120,6 +129,27 @@ public class ConversationService {
         return ordered;
     }
 
+    private void repairConversationTitles(UUID userId, List<Conversation> conversations) {
+        for (Conversation conversation : conversations) {
+            String normalizedTitle = conversation.getTitle() == null ? null : conversation.getTitle().strip();
+            if (!hasText(normalizedTitle)) {
+                normalizedTitle = DEFAULT_CONVERSATION_TITLE;
+            }
+
+            if (isPlaceholderTitle(normalizedTitle)) {
+                normalizedTitle = resolveTitleFromFirstUserMessage(conversation.getId());
+            }
+
+            if (!Objects.equals(conversation.getTitle(), normalizedTitle)) {
+                conversation.setTitle(normalizedTitle);
+                conversationMapper.update(null, new LambdaUpdateWrapper<Conversation>()
+                        .eq(Conversation::getId, conversation.getId())
+                        .eq(Conversation::getUserId, userId)
+                        .set(Conversation::getTitle, normalizedTitle));
+            }
+        }
+    }
+
     private void addMessage(UUID userId, UUID conversationId, String role, String content) {
         requireOwnedConversation(userId, conversationId);
         messageMapper.insert(ConversationMessage.builder()
@@ -143,5 +173,42 @@ public class ConversationService {
             throw new BusinessException(ApiCode.NOT_FOUND, "对话不存在或无权访问");
         }
         return conversation;
+    }
+
+    private String buildConversationTitle(String content) {
+        if (!hasText(content)) {
+            return DEFAULT_CONVERSATION_TITLE;
+        }
+        String normalized = content.strip();
+        int lineBreakIndex = normalized.indexOf('\n');
+        if (lineBreakIndex >= 0) {
+            normalized = normalized.substring(0, lineBreakIndex).strip();
+        }
+        return normalized.isEmpty() ? DEFAULT_CONVERSATION_TITLE : normalized;
+    }
+
+    private String resolveTitleFromFirstUserMessage(UUID conversationId) {
+        ConversationMessage firstUserMessage = messageMapper.selectOne(new LambdaQueryWrapper<ConversationMessage>()
+                .eq(ConversationMessage::getConversationId, conversationId)
+                .eq(ConversationMessage::getRole, "USER")
+                .orderByAsc(ConversationMessage::getCreatedAt)
+                .last("LIMIT 1"));
+        if (firstUserMessage == null) {
+            return DEFAULT_CONVERSATION_TITLE;
+        }
+        return buildConversationTitle(firstUserMessage.getContent());
+    }
+
+    private String normalizeTitle(String title) {
+        String normalizedTitle = title == null ? null : title.strip();
+        return hasText(normalizedTitle) ? normalizedTitle : DEFAULT_CONVERSATION_TITLE;
+    }
+
+    private boolean isPlaceholderTitle(String title) {
+        return !hasText(title) || PLACEHOLDER_TITLES.contains(title);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

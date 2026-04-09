@@ -1,4 +1,4 @@
-package cn.net.tomatoegg.ai.controller;
+package cn.net.tomatoegg.ai.handler;
 
 import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.exception.SaTokenException;
@@ -23,13 +23,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NotLoginException.class)
     public ResponseEntity<Map<String, Object>> handleNotLogin(NotLoginException ex) {
         return ResponseEntity.status(ApiCode.UNAUTHORIZED.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.UNAUTHORIZED, "Please login first"));
+                .body(ResponseUtils.fail(ApiCode.UNAUTHORIZED, "请先登录"));
     }
 
     @ExceptionHandler(SaTokenException.class)
     public ResponseEntity<Map<String, Object>> handleSaToken(SaTokenException ex) {
         return ResponseEntity.status(ApiCode.UNAUTHORIZED.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.UNAUTHORIZED, ex.getMessage()));
+                .body(ResponseUtils.fail(ApiCode.UNAUTHORIZED, "登录态已失效，请重新登录"));
     }
 
     @ExceptionHandler(BusinessException.class)
@@ -41,19 +41,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.status(ApiCode.BAD_REQUEST.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, ex.getMessage()));
+                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "请求参数不合法"));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return ResponseEntity.status(ApiCode.BAD_REQUEST.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "Invalid request parameter format"));
+                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "请求参数格式错误"));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleNotReadable(HttpMessageNotReadableException ex) {
         return ResponseEntity.status(ApiCode.BAD_REQUEST.getHttpStatus())
-                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "Invalid request body format"));
+                .body(ResponseUtils.fail(ApiCode.BAD_REQUEST, "请求体格式错误"));
     }
 
     @ExceptionHandler(ResponseStatusException.class)
@@ -71,16 +71,14 @@ public class GlobalExceptionHandler {
         } else {
             apiCode = ApiCode.SERVER_ERROR;
         }
-        String message = ex.getReason() == null ? apiCode.getMessage() : ex.getReason();
         return ResponseEntity.status(ex.getStatusCode())
-                .body(ResponseUtils.fail(apiCode, message));
+                .body(ResponseUtils.fail(apiCode, apiCode.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleOther(Exception ex) {
         log.error("Unhandled exception", ex);
-        String message = ex.getMessage() == null ? "Internal server error" : ex.getMessage();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ResponseUtils.fail(ApiCode.SERVER_ERROR, message));
+                .body(ResponseUtils.fail(ApiCode.SERVER_ERROR, ApiCode.SERVER_ERROR.getMessage()));
     }
 }

@@ -1,6 +1,8 @@
-package cn.net.tomatoegg.ai.service;
+package cn.net.tomatoegg.ai.service.chat;
 
 import cn.net.tomatoegg.ai.integration.QwenIntegration;
+import cn.net.tomatoegg.ai.service.conversation.ConversationService;
+import cn.net.tomatoegg.ai.service.knowledgebase.KnowledgeBaseSearchService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -15,7 +17,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-public class AiService {
+public class ChatService {
 
     private static final String RAG_SYSTEM_PROMPT = "你是一个智能助手，请根据用户提供的上下文信息回答问题。如果不确定或上下文不包含相关信息，请直接回答不知道，不要编造内容。";
     private static final String NORMAL_SYSTEM_PROMPT = "你是一名专业的智能助手，请基于上下文对话历史，准确、简洁地回答用户问题。如果你不确定答案，请直接说明不知道。";
@@ -24,18 +26,18 @@ public class AiService {
     private final QwenIntegration qwenIntegration;
     private final ConversationService conversationService;
     private final RerankService rerankService;
-    private final KnowledgeBaseService knowledgeBaseService;
+    private final KnowledgeBaseSearchService knowledgeBaseSearchService;
 
-    public AiService(ChatClient.Builder chatClientBuilder,
-                     QwenIntegration qwenIntegration,
-                     ChatMemory chatMemory,
-                     ConversationService conversationService,
-                     RerankService rerankService,
-                     KnowledgeBaseService knowledgeBaseService) {
+    public ChatService(ChatClient.Builder chatClientBuilder,
+                       QwenIntegration qwenIntegration,
+                       ChatMemory chatMemory,
+                       ConversationService conversationService,
+                       RerankService rerankService,
+                       KnowledgeBaseSearchService knowledgeBaseSearchService) {
         this.qwenIntegration = qwenIntegration;
         this.conversationService = conversationService;
         this.rerankService = rerankService;
-        this.knowledgeBaseService = knowledgeBaseService;
+        this.knowledgeBaseSearchService = knowledgeBaseSearchService;
         this.chatClient = chatClientBuilder.build();
     }
 
@@ -46,7 +48,7 @@ public class AiService {
             conversationService.addUserMessage(userId, conversationId, question);
         }
 
-        List<Document> documents = knowledgeBaseService.searchFromKnowledgeBase(question, kbId, 5, userId);
+        List<Document> documents = knowledgeBaseSearchService.searchFromKnowledgeBase(question, kbId, 5, userId);
         if (documents.isEmpty()) {
             String fallback = "抱歉，知识库中没有找到相关信息。";
             if (conversationId != null) {

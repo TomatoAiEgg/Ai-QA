@@ -1,10 +1,10 @@
-package cn.net.tomatoegg.ai.controller;
+package cn.net.tomatoegg.ai.controller.auth;
 
 import cn.dev33.satoken.exception.SaTokenException;
 import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.common.ResponseUtils;
 import cn.net.tomatoegg.ai.exception.BusinessException;
-import cn.net.tomatoegg.ai.service.AuthService;
+import cn.net.tomatoegg.ai.service.auth.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;

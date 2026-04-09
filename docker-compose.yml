@@ -11,9 +11,6 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - /opt/data/ai-qa/postgres:/var/lib/postgresql/data
-      - ./database/susan_ai_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./database/susan_ai_data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
-      - ./database/vector_store_1024_v2.sql:/docker-entrypoint-initdb.d/03-vector-store-v2.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-Ai-QA}"]
       interval: 10s
@@ -35,6 +32,20 @@ services:
       timeout: 5s
       retries: 10
 
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: aiqa-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9100}:9000"
+      - "${MINIO_CONSOLE_PORT:-9101}:9001"
+    volumes:
+      - /opt/data/ai-qa/minio:/data
+
   backend:
     build:
       context: .
@@ -46,6 +57,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-Ai-QA}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
@@ -54,11 +67,15 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-123456}
       SPRING_AI_OPENAI_API_KEY: ${QWEN_API_KEY}
+      AI_DOCUMENT_STORAGE_TYPE: minio
+      AI_DOCUMENT_STORAGE_MINIO_ENDPOINT: http://minio:9000
+      AI_DOCUMENT_STORAGE_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      AI_DOCUMENT_STORAGE_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AI_DOCUMENT_STORAGE_MINIO_BUCKET: ${MINIO_BUCKET:-aiqa-documents}
       JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx1024m}
     ports:
       - "${BACKEND_PORT:-7000}:7000"
     volumes:
-      - /opt/data/ai-qa/kb-files:/app/data/kb-files
       - /opt/logs/ai-qa:/opt/logs/ai-qa
 
   nginx:

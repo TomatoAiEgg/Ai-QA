@@ -154,6 +154,90 @@ marked.setOptions({
   silent: true
 })
 
+const ALLOWED_HTML_TAGS = new Set([
+  'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'hr', 'li', 'ol', 'p', 'pre', 'span', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
+])
+
+function sanitizeUrl(url) {
+  if (!url) {
+    return ''
+  }
+
+  const trimmed = url.trim()
+  if (!trimmed) {
+    return ''
+  }
+  if (trimmed.startsWith('#')) {
+    return trimmed
+  }
+
+  try {
+    const parsed = new URL(trimmed, window.location.origin)
+    if (['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol)) {
+      return parsed.href
+    }
+  } catch (error) {
+    return ''
+  }
+
+  return ''
+}
+
+function sanitizeRenderedHtml(html) {
+  const template = document.createElement('template')
+  template.innerHTML = html
+
+  for (const element of Array.from(template.content.querySelectorAll('*'))) {
+    const tagName = element.tagName.toLowerCase()
+    if (!ALLOWED_HTML_TAGS.has(tagName)) {
+      if (['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'].includes(tagName)) {
+        element.remove()
+      } else {
+        element.replaceWith(...Array.from(element.childNodes))
+      }
+      continue
+    }
+
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase()
+      const value = attribute.value
+
+      if (name.startsWith('on') || name === 'style' || name === 'srcdoc') {
+        element.removeAttribute(attribute.name)
+        continue
+      }
+
+      if (tagName === 'a' && name === 'href') {
+        const safeHref = sanitizeUrl(value)
+        if (!safeHref) {
+          element.removeAttribute('href')
+        } else {
+          element.setAttribute('href', safeHref)
+          element.setAttribute('target', '_blank')
+          element.setAttribute('rel', 'noopener noreferrer nofollow')
+        }
+        continue
+      }
+
+      if (name === 'target' || name === 'rel') {
+        if (tagName !== 'a') {
+          element.removeAttribute(attribute.name)
+        }
+        continue
+      }
+
+      if (name === 'class' || name === 'title') {
+        continue
+      }
+
+      element.removeAttribute(attribute.name)
+    }
+  }
+
+  return template.innerHTML
+}
+
 // 流式 Markdown 渲染器 - 在流式传输过程中使用
 function streamingMarkdownRender(text) {
   if (!text) return ''
@@ -224,6 +308,7 @@ const model = ref('qwen')
 const knowledgeBases = ref([])
 const ALL_KNOWLEDGE_BASES = '__ALL_KNOWLEDGE_BASES__'
 const selectedKbId = ref(ALL_KNOWLEDGE_BASES)
+const getErrorMessage = (error, fallback = '请求失败') => error?.message || fallback
 
 const currentConvId = inject('currentConvId', ref(null))
 const refreshConversations = inject('refreshConversations', () => {})
@@ -355,11 +440,11 @@ const useSuggestion = async (text) => {
     await refreshConversations()
     scrollToBottom(true)
   } catch (error) {
-    if (streamingMsg?.value) {
-      streamingMsg.content = streamingMsg.content || ('❌ 请求失败：' + error.message)
+    if (streamingMsg) {
+      streamingMsg.content = streamingMsg.content || getErrorMessage(error)
       streamingMsg.id = `bot-${Date.now()}`
     }
-    ElMessage.error('创建对话失败：' + error.message)
+    ElMessage.error(getErrorMessage(error, '请求失败'))
   } finally {
     isBotResponding.value = false
   }
@@ -388,7 +473,7 @@ const loadMessages = async (convId) => {
     await nextTick()
     scrollToBottom()
   } catch (error) {
-    ElMessage.error('加载消息失败：' + error.message)
+    ElMessage.error(getErrorMessage(error, '加载消息失败'))
   }
 }
 
@@ -405,7 +490,7 @@ const handleSend = async () => {
       currentConvId.value = conv.id
       await refreshConversations()
     } catch (error) {
-      ElMessage.error('创建对话失败：' + error.message)
+      ElMessage.error(getErrorMessage(error, '创建对话失败'))
       return
     }
   }
@@ -456,9 +541,9 @@ const handleSend = async () => {
     await nextTick()
     await refreshConversations()
   } catch (error) {
-    streamingMsg.content = '❌ 请求失败：' + error.message
+    streamingMsg.content = getErrorMessage(error)
     streamingMsg.id = `bot-${Date.now()}`
-    ElMessage.error('AI 响应失败：' + error.message)
+    ElMessage.error(getErrorMessage(error, 'AI 响应失败'))
   } finally {
     isBotResponding.value = false
     await nextTick()
@@ -473,7 +558,7 @@ const copyToClipboard = async (botMsg) => {
     setTimeout(() => { botMsg.copied = false }, 2000)
     ElMessage.success('已复制')
   } catch (error) {
-    ElMessage.error('复制失败：' + error.message)
+    ElMessage.error(getErrorMessage(error, '复制失败'))
   }
 }
 
@@ -489,13 +574,13 @@ const renderMarkdown = (content, isStreaming = false) => {
   try {
     // 流式传输过程中使用简单渲染
     if (isStreaming) {
-      return marked.parse(content)
+      return sanitizeRenderedHtml(streamingMarkdownRender(content))
     }
     // 流式完成后使用完整的 marked 渲染（带代码高亮）
-    return marked.parse(content)
+    return sanitizeRenderedHtml(marked.parse(content))
   } catch (error) {
     console.error('Markdown 解析失败:', error)
-    return content
+    return sanitizeRenderedHtml(streamingMarkdownRender(content))
   }
 }
 

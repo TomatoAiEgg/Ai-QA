@@ -99,16 +99,12 @@ export const uploadDocument = async (file, kbId) => {
   }))
 }
 
-export const previewChunks = async (file) => {
-  const formData = new FormData()
-  formData.append('file', file)
-  return unwrapResult(await api.post('/ai/preview-chunks', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }))
-}
-
 export const deleteDocument = async (id) => {
   return unwrapResult(await api.delete(`/ai/documents/${id}`))
+}
+
+export const retryDocument = async (id) => {
+  return unwrapResult(await api.post(`/ai/documents/${id}/retry`))
 }
 
 export const getConversations = async () => {
@@ -157,10 +153,10 @@ export const chatByStream = async (question, conversationId, options = {}) => {
     const contentType = response.headers.get('content-type') || ''
     if (contentType.includes('application/json')) {
       const payload = await response.json()
-      throw new Error(payload?.message || `请求失败: ${response.status}`)
+      throw new Error(payload?.message || `请求失败（${response.status}）`)
     }
     const errorText = await response.text()
-    throw new Error(errorText || `请求失败: ${response.status}`)
+    throw new Error(errorText || `请求失败（${response.status}）`)
   }
 
   return response
@@ -224,8 +220,6 @@ export const readSSEStream = async (response, onChunk) => {
   return buffer
 }
 
-export const previewDocument = async (id) => {
-  return unwrapResult(await api.get(`/ai/documents/${id}/preview`))
-}
+export const getDocumentPreviewUrl = (id) => `/ai/documents/${id}/preview`
 
 export default api

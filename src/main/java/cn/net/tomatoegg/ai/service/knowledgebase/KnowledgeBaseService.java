@@ -1,4 +1,4 @@
-package cn.net.tomatoegg.ai.service;
+package cn.net.tomatoegg.ai.service.knowledgebase;
 
 import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.entity.KnowledgeBase;
@@ -6,6 +6,7 @@ import cn.net.tomatoegg.ai.entity.KnowledgeBaseDocument;
 import cn.net.tomatoegg.ai.exception.BusinessException;
 import cn.net.tomatoegg.ai.mapper.KnowledgeBaseDocumentMapper;
 import cn.net.tomatoegg.ai.mapper.KnowledgeBaseMapper;
+import cn.net.tomatoegg.ai.service.document.DocumentService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
@@ -23,11 +24,11 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class KnowledgeBaseManagementService {
+public class KnowledgeBaseService {
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeBaseDocumentMapper documentMapper;
-    private final KnowledgeBaseService knowledgeBaseService;
+    private final DocumentService documentService;
 
     @Caching(evict = {
             @CacheEvict(value = "knowledgeBaseListCache", key = "#userId.toString()"),
@@ -111,14 +112,7 @@ public class KnowledgeBaseManagementService {
         long documentCount = documentMapper.selectCount(new LambdaQueryWrapper<KnowledgeBaseDocument>()
                 .eq(KnowledgeBaseDocument::getUserId, userId)
                 .eq(KnowledgeBaseDocument::getKbId, id));
-        knowledgeBaseService.deleteKnowledgeBaseVectors(id);
-        documentMapper.selectList(new LambdaQueryWrapper<KnowledgeBaseDocument>()
-                        .eq(KnowledgeBaseDocument::getUserId, userId)
-                        .eq(KnowledgeBaseDocument::getKbId, id))
-                .forEach(doc -> knowledgeBaseService.deleteStoredFile(doc.getStoragePath()));
-        documentMapper.delete(new LambdaQueryWrapper<KnowledgeBaseDocument>()
-                .eq(KnowledgeBaseDocument::getUserId, userId)
-                .eq(KnowledgeBaseDocument::getKbId, id));
+        documentService.deleteKnowledgeBaseDocuments(userId, id);
         knowledgeBaseMapper.delete(new LambdaQueryWrapper<KnowledgeBase>()
                 .eq(KnowledgeBase::getId, id)
                 .eq(KnowledgeBase::getCreatedBy, userId));

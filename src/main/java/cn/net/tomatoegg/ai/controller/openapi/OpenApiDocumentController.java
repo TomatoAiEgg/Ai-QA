@@ -1,10 +1,10 @@
-package cn.net.tomatoegg.ai.controller;
+package cn.net.tomatoegg.ai.controller.openapi;
 
 import cn.net.tomatoegg.ai.common.ApiCode;
 import cn.net.tomatoegg.ai.common.ResponseUtils;
 import cn.net.tomatoegg.ai.exception.BusinessException;
-import cn.net.tomatoegg.ai.service.KnowledgeBaseService;
-import cn.net.tomatoegg.ai.service.OpenApiTokenService;
+import cn.net.tomatoegg.ai.service.openapi.OpenApiTokenService;
+import cn.net.tomatoegg.ai.service.document.DocumentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,10 +22,10 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/openapi")
 @RequiredArgsConstructor
-public class OpenApiController {
+public class OpenApiDocumentController {
 
     private final OpenApiTokenService openApiTokenService;
-    private final KnowledgeBaseService knowledgeBaseService;
+    private final DocumentService documentService;
 
     @PostMapping("/knowledge-bases/{kbId}/documents")
     public Map<String, Object> uploadDocument(@PathVariable UUID kbId,
@@ -34,11 +34,12 @@ public class OpenApiController {
                                               @RequestHeader(value = "X-API-Token", required = false) String apiTokenHeader) {
         try {
             UUID userId = openApiTokenService.authenticate(resolveToken(authorization, apiTokenHeader));
-            log.info("收到开放接口文档上传请求, userId={}, kbId={}, filename={}", userId, kbId, file.getOriginalFilename());
-            String message = knowledgeBaseService.uploadDocument(file, kbId, userId);
+            String safeFilename = documentService.resolveSafeOriginalFilename(file);
+            log.info("收到开放接口文档上传请求, userId={}, kbId={}, filename={}", userId, kbId, safeFilename);
+            String message = documentService.uploadDocument(file, kbId, userId);
             return ResponseUtils.success(Map.of(
                     "kbId", kbId.toString(),
-                    "filename", file.getOriginalFilename() == null ? "" : file.getOriginalFilename(),
+                    "filename", safeFilename,
                     "message", message
             ));
         } catch (BusinessException ex) {

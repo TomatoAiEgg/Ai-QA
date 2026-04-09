@@ -133,6 +133,7 @@ const conversations = ref([])
 const currentConvId = ref(null)
 const showRagModal = ref(false)
 const activeTheme = ref(localStorage.getItem(THEME_STORAGE_KEY) || themes[0].value)
+const getErrorMessage = (error, fallback = '操作失败') => error?.message || fallback
 
 const currentTheme = computed(() => themes.find(theme => theme.value === activeTheme.value) || themes[0])
 const currentUserLabel = computed(() => {
@@ -193,7 +194,7 @@ const editConversation = async (conv) => {
       await refreshConversations()
       ElMessage.success('标题已更新')
     } catch (error) {
-      ElMessage.error('更新失败：' + error.message)
+      ElMessage.error(getErrorMessage(error, '更新失败'))
     }
   }
 }
@@ -208,7 +209,7 @@ const deleteConversation = async (conv) => {
     await refreshConversations()
     ElMessage.success('对话已删除')
   } catch (error) {
-    ElMessage.error('删除失败：' + error.message)
+    ElMessage.error(getErrorMessage(error, '删除失败'))
   }
 }
 

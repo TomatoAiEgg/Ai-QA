@@ -1,4 +1,4 @@
-package cn.net.tomatoegg.ai.service;
+package cn.net.tomatoegg.ai.service.auth;
 
 import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.stp.SaTokenInfo;
@@ -19,6 +19,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -35,6 +36,7 @@ public class AuthService {
     private final KnowledgeBaseDocumentMapper knowledgeBaseDocumentMapper;
     private final AuthSessionCacheService authSessionCacheService;
 
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> register(String email, String phone, String password, String nickname) {
         String normalizedEmail = normalizeEmail(email);
         String normalizedPhone = normalizePhone(phone);
@@ -62,11 +64,13 @@ public class AuthService {
             adoptLegacyDataIfNeeded(user.getId());
             return cacheCurrentSession(user);
         } catch (Exception ex) {
+            rollbackLoginSession(user.getId());
             log.error("注册后初始化登录态失败, userId={}", user.getId(), ex);
-            throw ex;
+            throw new BusinessException(ApiCode.REGISTER_FAILED, "注册后初始化登录态失败，请稍后重试", ex);
         }
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> login(String account, String password) {
         if (account == null || account.isBlank() || password == null || password.isBlank()) {
             throw new BusinessException(ApiCode.BAD_REQUEST, "账号和密码不能为空");
@@ -94,17 +98,22 @@ public class AuthService {
             log.info("登录成功, userId={}, account={}", user.getId(), trimmed);
             return cacheCurrentSession(user);
         } catch (Exception ex) {
+            rollbackLoginSession(user.getId());
             log.error("登录后初始化登录态失败, userId={}", user.getId(), ex);
-            throw ex;
+            throw new BusinessException(ApiCode.LOGIN_FAILED, "登录态初始化失败，请稍后重试", ex);
         }
     }
 
     public void logout() {
         if (StpUtil.isLogin()) {
             UUID userId = getCurrentUserId();
-            authSessionCacheService.clearSession(StpUtil.getTokenValue());
-            StpUtil.logout();
-            log.info("退出登录成功, userId={}", userId);
+            String tokenValue = StpUtil.getTokenValue();
+            try {
+                StpUtil.logout();
+                log.info("退出登录成功, userId={}", userId);
+            } finally {
+                clearSessionQuietly(tokenValue, userId);
+            }
         }
     }
 
@@ -250,5 +259,35 @@ public class AuthService {
                 .isNull(KnowledgeBaseDocument::getUserId)
                 .set(KnowledgeBaseDocument::getUserId, userId)
                 .setSql("updated_at = NOW()"));
+    }
+
+    private void rollbackLoginSession(UUID userId) {
+        String tokenValue = null;
+        try {
+            tokenValue = resolveTokenValue(userId);
+        } catch (Exception ex) {
+            log.warn("回滚登录态时获取 token 失败, userId={}", userId, ex);
+        }
+
+        try {
+            if (StpUtil.isLogin()) {
+                StpUtil.logout();
+            }
+        } catch (Exception ex) {
+            log.warn("回滚登录态失败, userId={}", userId, ex);
+        } finally {
+            clearSessionQuietly(tokenValue, userId);
+        }
+    }
+
+    private void clearSessionQuietly(String tokenValue, UUID userId) {
+        if (tokenValue == null || tokenValue.isBlank()) {
+            return;
+        }
+        try {
+            authSessionCacheService.clearSession(tokenValue);
+        } catch (Exception ex) {
+            log.warn("清理登录态缓存失败, userId={}, token={}", userId, tokenValue, ex);
+        }
     }
 }
