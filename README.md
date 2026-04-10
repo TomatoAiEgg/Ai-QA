@@ -1,175 +1,242 @@
 # AI-QA
 
-AI-QA 是一个面向知识库问答场景的 AI 工作台项目，支持普通对话、RAG 检索增强对话、知识库管理、文档上传、历史会话、Redis 登录态和 OpenAPI 文档上传。
+AI-QA 是一个基于 Spring Boot + Vue 的智能问答系统，支持普通 AI 对话、RAG 知识库问答、文档异步处理、OpenAPI 上传和 MinIO 文档存储。
+
+## 当前能力
+
+- 普通 AI 对话
+- RAG 对话
+- 多知识库管理
+- 文档上传、删除、重试、原文件预览
+- RocketMQ 异步文档处理
+- MinIO 文档存储
+- OpenAPI Token 与文档上传
+- Redis 登录态和缓存
 
 ## 技术栈
 
-- 后端：Spring Boot 3、Spring AI、MyBatis-Plus、Sa-Token
-- 前端：Vue 3、Vite、Element Plus
-- 数据库：PostgreSQL + pgvector
-- 缓存：Redis
-- 部署：Docker Compose、Nginx
+### 后端
 
-## GitHub 用户快速部署
+- Spring Boot 3.4
+- Spring AI
+- MyBatis-Plus
+- PostgreSQL + pgvector
+- Redis
+- Sa-Token
+- RocketMQ
+- MinIO
 
-服务端只需要安装好 Docker 和 Docker Compose，不需要手工安装 Java、Maven、Node。
+### 前端
 
-### 1. 拉取项目
-
-```bash
-cd /opt/projects
-git clone https://github.com/TomatoAiEgg/Ai-QA.git ai-qa
-cd /opt/projects/ai-qa
-```
-
-### 2. 创建宿主机目录
-
-```bash
-sudo mkdir -p /opt/data/ai-qa/postgres
-sudo mkdir -p /opt/data/ai-qa/redis
-sudo mkdir -p /opt/data/ai-qa/kb-files
-sudo mkdir -p /opt/logs/ai-qa
-sudo mkdir -p /opt/logs/nginx
-```
-
-### 3. 配置环境变量
-
-```bash
-cp .env.example .env
-vim .env
-```
-
-至少需要填写：
-
-```env
-QWEN_API_KEY=你的真实千问秘钥
-```
-
-说明：
-- `.env.example` 可以提交到 GitHub
-- `.env` 只保留在服务器本地，不要提交
-
-### 4. 一键启动
-
-```bash
-docker compose up -d --build
-```
-
-### 5. 查看状态
-
-```bash
-docker compose ps
-docker compose logs -f
-```
-
-默认端口：
-- 前端入口：`80`
-- 后端服务：`7000`
-- PostgreSQL：`5432`
-- Redis：`6379`
-
-## 首次启动说明
-
-- `postgres` 容器会在第一次初始化时自动执行：
-  - `database/susan_ai_schema.sql`
-  - `database/susan_ai_data.sql`
-  - `database/vector_store_1024_v2.sql`
-- 如果你已经有旧的 PostgreSQL 数据目录，初始化 SQL 不会再次自动执行
-
-如果要重置数据库后重建：
-
-```bash
-docker compose down
-sudo rm -rf /opt/data/ai-qa/postgres
-sudo mkdir -p /opt/data/ai-qa/postgres
-docker compose up -d --build
-```
-
-## 日志与数据目录
-
-- 项目日志：`/opt/logs/ai-qa`
-- Nginx 日志：`/opt/logs/nginx`
-- PostgreSQL 数据：`/opt/data/ai-qa/postgres`
-- Redis 数据：`/opt/data/ai-qa/redis`
-- 知识库原始文件：`/opt/data/ai-qa/kb-files`
-
-## 常用命令
-
-更新代码并重建：
-
-```bash
-cd /opt/projects/ai-qa
-git pull
-docker compose up -d --build
-```
-
-停止服务：
-
-```bash
-docker compose down
-```
-
-查看单个服务日志：
-
-```bash
-docker compose logs -f backend
-docker compose logs -f postgres
-docker compose logs -f redis
-docker compose logs -f nginx
-```
+- Vue 3
+- Vite
+- Element Plus
 
 ## 项目结构
 
 ```text
-AI-QA/
-├─ src/                      后端源码
-├─ ui/                       前端源码
-├─ database/                 数据库初始化脚本
-├─ deploy/nginx/             Nginx 反向代理配置
-├─ Dockerfile                后端镜像构建
-├─ ui/Dockerfile             前端镜像构建
-├─ docker-compose.yml        一键部署编排
-├─ .env.example              环境变量模板
-└─ docs/                     项目文档
+src/main/java/cn/net/tomatoegg/ai
+  controller/
+    auth/
+    chat/
+    conversation/
+    document/
+    knowledgebase/
+    openapi/
+  service/
+    auth/
+    chat/
+    conversation/
+    document/
+    embedding/
+    knowledgebase/
+    model/
+    openapi/
+  mq/rocketmq/document/
+  handler/
+  mapper/
 ```
 
-## 当前部署方式
+## 文档处理链路
 
-当前仓库默认以 Docker Compose 为主：
-- 前端由 Nginx 托管并反向代理后端
-- 后端容器自动构建并启动
-- PostgreSQL 使用 `pgvector/pgvector:pg17-trixie`
-- Redis 使用 `redis:7.4`
+1. 上传文档
+2. 文件写入 MinIO
+3. 文档记录入库
+4. 发送 RocketMQ 消息
+5. 消费者异步处理：
+   - 读取原始文件
+   - 文本切片
+   - 批量向量化
+   - 写入 pgvector
+   - 更新文档状态
 
-如果你只是想从 GitHub 拉下来直接部署，按上面的“快速部署”执行即可。
+## 运行依赖
 
-## 模型自动切换
+项目当前默认依赖以下服务：
 
-- 聊天模型不再写死为单个模型
-- 默认模型池：
-  - `qwen-plus-2025-01-25`
-  - `qwen-turbo-2025-02-11`
-  - `qwen-long`
-- 当某个模型出现 `AllocationQuota.FreeTierOnly` 或免费额度耗尽时，后端会自动切到下一个可用模型
-- 当 DashScope 出现 `Connection reset` 等瞬时网络错误时，后端会先重试，再切备用模型
-- 相关环境变量可在 `.env` 中覆盖：
+- PostgreSQL
+- Redis
+- MinIO
+- RocketMQ
 
-```env
-AI_CHAT_DEFAULT_MODEL=qwen-plus-2025-01-25
-AI_CHAT_FALLBACK_MODEL_1=qwen-turbo-2025-02-11
-AI_CHAT_FALLBACK_MODEL_2=qwen-long
-AI_EMBEDDING_DEFAULT_MODEL=text-embedding-v3
+其中：
+
+- 文档存储默认走 MinIO
+- 文档异步处理默认走 RocketMQ
+
+## 配置说明
+
+核心配置位于：
+
+- `src/main/resources/application.yml`
+
+### 重点配置
+
+#### 数据库
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/Ai-QA
+    username: postgres
+    password: 123456
 ```
 
-## 运维可视化
+#### Redis
 
-- 默认不启动 Portainer
-- 如需可视化管理 Docker 容器和日志，可执行：
+```yaml
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+```
+
+#### RocketMQ
+
+```yaml
+ai:
+  service:
+    rocketmq:
+      document-process:
+        enabled: true
+        name-server: 127.0.0.1:9876
+        topic: aiqa_document_process
+```
+
+#### MinIO
+
+```yaml
+ai:
+  service:
+    document:
+      storage:
+        type: minio
+        minio:
+          endpoint: http://127.0.0.1:9100
+          access-key: minioadmin
+          secret-key: minioadmin
+          bucket: aiqa-documents
+          auto-create-bucket: true
+```
+
+## 本地开发
+
+### 1. 启动基础服务
+
+你需要先自行准备：
+
+- PostgreSQL
+- Redis
+- RocketMQ NameServer / Broker
+- MinIO
+
+### 2. 启动 MinIO
+
+如果你已经把 `minio.exe` 放在 `D:\Javasource\minIO`，可以直接使用：
+
+- `D:\Javasource\minIO\start-minio-local.bat`
+- `D:\Javasource\minIO\stop-minio-local.bat`
+
+默认地址：
+
+- API: `http://127.0.0.1:9100`
+- Console: `http://127.0.0.1:9101`
+
+默认账号密码：
+
+- `minioadmin`
+- `minioadmin`
+
+### 3. 启动 RocketMQ
+
+如果使用本地安装版：
 
 ```bash
-docker compose --profile ops up -d portainer
+mqnamesrv.cmd
+mqbroker.cmd -n 127.0.0.1:9876 autoCreateTopicEnable=true
 ```
 
-- 访问地址：
-  - `http://服务器IP:9000`
-  - `https://服务器IP:9443`
+### 4. 启动后端
+
+```bash
+.\mvnw.cmd spring-boot:run
+```
+
+默认端口：
+
+- `7000`
+
+### 5. 启动前端
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+## Docker Compose
+
+仓库内已提供 `docker-compose.yml`，当前包含：
+
+- PostgreSQL
+- Redis
+- MinIO
+- Backend
+- Nginx
+- Portainer（可选）
+
+启动：
+
+```bash
+docker compose up -d --build
+```
+
+MinIO 默认端口映射：
+
+- `9100 -> 9000`
+- `9101 -> 9001`
+
+## 预览说明
+
+- `pdf`、`txt`、`md` 通常可以直接在浏览器预览
+- `doc`、`docx` 是否内联展示取决于浏览器自身能力
+- MinIO 文件预览会跳转到签名地址
+- 本地文件预览会走后端文件流
+
+## 注意事项
+
+- 数据库初始化和历史数据导入当前按手工方式处理，不依赖仓库内自动建库脚本
+- 旧的本地存储文档会兼容读取，但新上传文档默认进入 MinIO
+- 如果要关闭 MQ，手动调整 `AI_DOCUMENT_PROCESS_MQ_ENABLED=false`
+- 如果要切回本地存储，手动调整 `AI_DOCUMENT_STORAGE_TYPE=local`
+
+## 已知问题
+
+- 前端部分页面仍存在历史乱码文案，后续需要继续清理
+- 前端主包较大，Vite 构建会提示 chunk size 警告
+- 自动化测试覆盖率仍不足
+
+## 仓库地址
+
+- GitHub: `https://github.com/TomatoAiEgg/Ai-QA`
