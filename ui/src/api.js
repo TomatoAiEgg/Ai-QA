@@ -50,12 +50,48 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-export const register = async ({ email = '', phone = '', password, nickname = '' }) => {
-  return unwrapResult(await api.post('/api/auth/register', { email, phone, password, nickname }))
+export const register = async ({
+  email = '',
+  password,
+  nickname = '',
+  captchaId = '',
+  captchaCode = ''
+}) => {
+  return unwrapResult(await api.post('/api/auth/register', {
+    email,
+    password,
+    nickname,
+    captchaId,
+    captchaCode
+  }))
 }
 
-export const login = async (account, password) => {
-  return unwrapResult(await api.post('/api/auth/login', { account, password }))
+export const login = async ({
+  email = '',
+  password,
+  captchaId = '',
+  captchaCode = ''
+}) => {
+  return unwrapResult(await api.post('/api/auth/login', {
+    email,
+    password,
+    captchaId,
+    captchaCode
+  }))
+}
+
+export const getRegisterCaptcha = async () => {
+  return unwrapResult(await api.get('/api/auth/register-captcha'))
+}
+
+export const getLoginCaptcha = async () => {
+  return unwrapResult(await api.get('/api/auth/login-captcha'))
+}
+
+export const checkEmailAvailability = async (email) => {
+  return unwrapResult(await api.get('/api/auth/email-availability', {
+    params: { email }
+  }))
 }
 
 export const logout = async () => {
@@ -64,6 +100,10 @@ export const logout = async () => {
 
 export const getAuthSession = async () => {
   return unwrapResult(await api.get('/api/auth/session'))
+}
+
+export const updateNickname = async (nickname) => {
+  return unwrapResult(await api.post('/api/auth/nickname', { nickname }))
 }
 
 export const getKnowledgeBases = async () => {

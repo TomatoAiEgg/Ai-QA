@@ -1,7 +1,7 @@
 package cn.net.tomatoegg.ai.service.auth;
 
-import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.stp.SaTokenInfo;
+import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.lang.Validator;
 import cn.hutool.crypto.digest.BCrypt;
 import cn.net.tomatoegg.ai.common.ApiCode;
@@ -30,34 +30,35 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final int MAX_NICKNAME_LENGTH = 128;
+
     private final AppUserMapper appUserMapper;
     private final ConversationMapper conversationMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeBaseDocumentMapper knowledgeBaseDocumentMapper;
     private final AuthSessionCacheService authSessionCacheService;
+    private final AuthCaptchaService authCaptchaService;
 
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> register(String email, String phone, String password, String nickname) {
+    public Map<String, Object> register(String email, String password, String nickname,
+                                        String captchaId, String captchaCode) {
         String normalizedEmail = normalizeEmail(email);
-        String normalizedPhone = normalizePhone(phone);
-        validateRegisterInput(normalizedEmail, normalizedPhone, password);
+        validateRegisterInput(normalizedEmail, password);
+        authCaptchaService.verifyRegisterCaptcha(captchaId, captchaCode);
 
-        if (normalizedEmail != null && findByEmail(normalizedEmail) != null) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "该邮箱已注册");
-        }
-        if (normalizedPhone != null && findByPhone(normalizedPhone) != null) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "该手机号已注册");
+        if (findByEmail(normalizedEmail) != null) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Email is already registered");
         }
 
         AppUser user = AppUser.builder()
                 .id(UUID.randomUUID())
                 .email(normalizedEmail)
-                .phone(normalizedPhone)
+                .phone(null)
                 .passwordHash(BCrypt.hashpw(password))
-                .nickname(resolveNickname(nickname, normalizedEmail, normalizedPhone))
+                .nickname(resolveNickname(nickname, normalizedEmail))
                 .build();
         appUserMapper.insert(user);
-        log.info("注册新用户成功, userId={}, email={}, phone={}", user.getId(), user.getEmail(), user.getPhone());
+        log.info("Registered user successfully, userId={}, email={}", user.getId(), user.getEmail());
 
         try {
             StpUtil.login(user.getId().toString());
@@ -65,42 +66,39 @@ public class AuthService {
             return cacheCurrentSession(user);
         } catch (Exception ex) {
             rollbackLoginSession(user.getId());
-            log.error("注册后初始化登录态失败, userId={}", user.getId(), ex);
-            throw new BusinessException(ApiCode.REGISTER_FAILED, "注册后初始化登录态失败，请稍后重试", ex);
+            log.error("Failed to initialize login session after register, userId={}", user.getId(), ex);
+            throw new BusinessException(ApiCode.REGISTER_FAILED, "Failed to initialize session after register", ex);
         }
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> login(String account, String password) {
-        if (account == null || account.isBlank() || password == null || password.isBlank()) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "账号和密码不能为空");
+    public Map<String, Object> login(String email, String password, String captchaId, String captchaCode) {
+        if (email == null || email.isBlank() || password == null || password.isBlank()) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Email and password are required");
         }
 
-        String trimmed = account.trim();
-        if (trimmed.contains("@")) {
-            if (!Validator.isEmail(trimmed)) {
-                throw new BusinessException(ApiCode.BAD_REQUEST, "邮箱格式不正确");
-            }
-        } else if (!Validator.isMobile(trimmed)) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "手机号格式不正确");
+        String normalizedEmail = normalizeEmail(email);
+        if (!Validator.isEmail(normalizedEmail)) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Invalid email format");
         }
-        AppUser user = trimmed.contains("@")
-                ? findByEmail(normalizeEmail(trimmed))
-                : findByPhone(normalizePhone(trimmed));
+
+        authCaptchaService.verifyLoginCaptcha(captchaId, captchaCode);
+
+        AppUser user = findByEmail(normalizedEmail);
         if (user == null || !BCrypt.checkpw(password, user.getPasswordHash())) {
-            log.warn("登录失败, account={}", trimmed);
-            throw new BusinessException(ApiCode.UNAUTHORIZED, "账号或密码错误");
+            log.warn("Login failed, email={}", normalizedEmail);
+            throw new BusinessException(ApiCode.UNAUTHORIZED, "Email or password is incorrect");
         }
 
         try {
             StpUtil.login(user.getId().toString());
             adoptLegacyDataIfNeeded(user.getId());
-            log.info("登录成功, userId={}, account={}", user.getId(), trimmed);
+            log.info("Login successful, userId={}, email={}", user.getId(), normalizedEmail);
             return cacheCurrentSession(user);
         } catch (Exception ex) {
             rollbackLoginSession(user.getId());
-            log.error("登录后初始化登录态失败, userId={}", user.getId(), ex);
-            throw new BusinessException(ApiCode.LOGIN_FAILED, "登录态初始化失败，请稍后重试", ex);
+            log.error("Failed to initialize login session after login, userId={}", user.getId(), ex);
+            throw new BusinessException(ApiCode.LOGIN_FAILED, "Failed to initialize session after login", ex);
         }
     }
 
@@ -110,7 +108,7 @@ public class AuthService {
             String tokenValue = StpUtil.getTokenValue();
             try {
                 StpUtil.logout();
-                log.info("退出登录成功, userId={}", userId);
+                log.info("Logout successful, userId={}", userId);
             } finally {
                 clearSessionQuietly(tokenValue, userId);
             }
@@ -122,48 +120,87 @@ public class AuthService {
         try {
             Map<String, Object> cachedSession = authSessionCacheService.getSession(tokenValue);
             if (cachedSession != null) {
-                log.info("登录态命中缓存, token={}", tokenValue);
+                log.info("Session cache hit, token={}", tokenValue);
                 return cachedSession;
             }
         } catch (Exception ex) {
-            log.warn("读取登录态缓存失败, token={}", tokenValue, ex);
+            log.warn("Failed to read session cache, token={}", tokenValue, ex);
             authSessionCacheService.clearSession(tokenValue);
         }
+
         UUID userId = getCurrentUserId();
         AppUser user = appUserMapper.selectById(userId);
         if (user == null) {
-            throw new BusinessException(ApiCode.UNAUTHORIZED, "用户不存在");
+            throw new BusinessException(ApiCode.UNAUTHORIZED, "User does not exist");
         }
-        log.info("登录态缓存未命中, 回源数据库恢复会话, userId={}", userId);
+
+        log.info("Session cache missed, restoring session from database, userId={}", userId);
         return cacheCurrentSession(user);
+    }
+
+    public Map<String, Object> getRegisterCaptcha() {
+        return authCaptchaService.generateRegisterCaptcha();
+    }
+
+    public Map<String, Object> getLoginCaptcha() {
+        return authCaptchaService.generateLoginCaptcha();
+    }
+
+    public Map<String, Object> checkEmailAvailability(String email) {
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail == null || !Validator.isEmail(normalizedEmail)) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Invalid email format");
+        }
+
+        boolean registered = findByEmail(normalizedEmail) != null;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("email", normalizedEmail);
+        payload.put("registered", registered);
+        payload.put("available", !registered);
+        return payload;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> updateNickname(String nickname) {
+        UUID userId = getCurrentUserId();
+        String normalizedNickname = normalizeNickname(nickname);
+
+        appUserMapper.update(null, new LambdaUpdateWrapper<AppUser>()
+                .eq(AppUser::getId, userId)
+                .set(AppUser::getNickname, normalizedNickname)
+                .setSql("updated_at = NOW()"));
+
+        AppUser updatedUser = appUserMapper.selectById(userId);
+        if (updatedUser == null) {
+            throw new BusinessException(ApiCode.UNAUTHORIZED, "User does not exist");
+        }
+
+        return cacheCurrentSession(updatedUser);
     }
 
     public UUID getCurrentUserId() {
         try {
             String loginId = StpUtil.getLoginIdAsString();
             if (loginId == null || loginId.isBlank()) {
-                throw new BusinessException(ApiCode.UNAUTHORIZED, "请先登录");
+                throw new BusinessException(ApiCode.UNAUTHORIZED, "Please login first");
             }
             return UUID.fromString(loginId);
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new BusinessException(ApiCode.UNAUTHORIZED, "登录态已失效", ex);
+            throw new BusinessException(ApiCode.UNAUTHORIZED, "Login session is invalid", ex);
         }
     }
 
-    private void validateRegisterInput(String email, String phone, String password) {
-        if ((email == null || email.isBlank()) && (phone == null || phone.isBlank())) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "邮箱或手机号至少填写一个");
+    private void validateRegisterInput(String email, String password) {
+        if (email == null || email.isBlank()) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Email is required");
+        }
+        if (!Validator.isEmail(email)) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Invalid email format");
         }
         if (password == null || password.length() < 6) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "密码长度不能少于 6 位");
-        }
-        if (email != null && !Validator.isEmail(email)) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "邮箱格式不正确");
-        }
-        if (phone != null && !Validator.isMobile(phone)) {
-            throw new BusinessException(ApiCode.BAD_REQUEST, "手机号格式不正确");
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Password must be at least 6 characters");
         }
     }
 
@@ -176,15 +213,6 @@ public class AuthService {
                 .last("LIMIT 1"));
     }
 
-    private AppUser findByPhone(String phone) {
-        if (phone == null) {
-            return null;
-        }
-        return appUserMapper.selectOne(new LambdaQueryWrapper<AppUser>()
-                .eq(AppUser::getPhone, phone)
-                .last("LIMIT 1"));
-    }
-
     private String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {
             return null;
@@ -192,25 +220,31 @@ public class AuthService {
         return email.trim().toLowerCase();
     }
 
-    private String normalizePhone(String phone) {
-        if (phone == null || phone.isBlank()) {
-            return null;
-        }
-        return phone.trim();
-    }
-
-    private String resolveNickname(String nickname, String email, String phone) {
+    private String resolveNickname(String nickname, String email) {
         if (nickname != null && !nickname.isBlank()) {
             return nickname.trim();
         }
-        if (email != null) {
-            return email;
+        return email;
+    }
+
+    private String normalizeNickname(String nickname) {
+        if (nickname == null) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Nickname is required");
         }
-        return phone;
+
+        String normalizedNickname = nickname.trim();
+        if (normalizedNickname.isEmpty()) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Nickname is required");
+        }
+        if (normalizedNickname.length() > MAX_NICKNAME_LENGTH) {
+            throw new BusinessException(ApiCode.BAD_REQUEST, "Nickname must be at most 128 characters");
+        }
+        return normalizedNickname;
     }
 
     private Map<String, Object> buildSessionPayload(AppUser user) {
         String tokenValue = resolveTokenValue(user.getId());
+
         Map<String, Object> userPayload = new LinkedHashMap<>();
         userPayload.put("id", user.getId().toString());
         userPayload.put("email", user.getEmail() == null ? "" : user.getEmail());
@@ -229,7 +263,7 @@ public class AuthService {
         String tokenValue = resolveTokenValue(user.getId());
         if (tokenValue != null && !tokenValue.isBlank()) {
             authSessionCacheService.cacheSession(tokenValue, payload, StpUtil.getTokenTimeout());
-            log.info("缓存登录态成功, userId={}, token={}", user.getId(), tokenValue);
+            log.info("Session cached successfully, userId={}, token={}", user.getId(), tokenValue);
         }
         return payload;
     }
@@ -247,7 +281,8 @@ public class AuthService {
         if (userCount == null || userCount != 1) {
             return;
         }
-        log.info("检测到首个用户登录, 开始接管历史遗留数据, userId={}", userId);
+
+        log.info("Detected first user login, adopting legacy data, userId={}", userId);
         conversationMapper.update(null, new LambdaUpdateWrapper<Conversation>()
                 .isNull(Conversation::getUserId)
                 .set(Conversation::getUserId, userId));
@@ -266,7 +301,7 @@ public class AuthService {
         try {
             tokenValue = resolveTokenValue(userId);
         } catch (Exception ex) {
-            log.warn("回滚登录态时获取 token 失败, userId={}", userId, ex);
+            log.warn("Failed to resolve token when rolling back login, userId={}", userId, ex);
         }
 
         try {
@@ -274,7 +309,7 @@ public class AuthService {
                 StpUtil.logout();
             }
         } catch (Exception ex) {
-            log.warn("回滚登录态失败, userId={}", userId, ex);
+            log.warn("Failed to rollback login session, userId={}", userId, ex);
         } finally {
             clearSessionQuietly(tokenValue, userId);
         }
@@ -287,7 +322,7 @@ public class AuthService {
         try {
             authSessionCacheService.clearSession(tokenValue);
         } catch (Exception ex) {
-            log.warn("清理登录态缓存失败, userId={}, token={}", userId, tokenValue, ex);
+            log.warn("Failed to clear session cache, userId={}, token={}", userId, tokenValue, ex);
         }
     }
 }

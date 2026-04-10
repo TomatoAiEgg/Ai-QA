@@ -331,6 +331,7 @@
 .user-chip {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   height: 44px;
   padding: 0 16px;
   border-radius: 16px;
@@ -340,6 +341,18 @@
   font-size: 14px;
   font-weight: 600;
   box-shadow: var(--chip-shadow);
+}
+
+.user-chip-button {
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.user-chip-button:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  background: var(--bg-panel-strong);
+  transform: translateY(-1px);
 }
 
 .header-copy {

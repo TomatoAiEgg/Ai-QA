@@ -85,7 +85,10 @@
               </div>
             </div>
 
-            <div class="user-chip">{{ currentUserLabel }}</div>
+            <button class="user-chip user-chip-button" type="button" @click="handleEditNickname">
+              <el-icon><Edit /></el-icon>
+              <span>{{ currentUserLabel }}</span>
+            </button>
 
             <el-button class="ghost-btn" @click="openRagModal">
               <el-icon><Folder /></el-icon>
@@ -112,9 +115,9 @@
 <script setup>
 import { computed, onMounted, provide, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import * as api from '../api.js'
-import { authState, clearAuthState } from '../auth.js'
+import { applySession, authState, clearAuthState } from '../auth.js'
 import { Fold, Expand, Plus, Folder, Edit, Delete, SwitchButton } from '@element-plus/icons-vue'
 import RagView from './RagView.vue'
 
@@ -222,6 +225,37 @@ const cycleTheme = () => {
   const currentIndex = themes.findIndex(theme => theme.value === activeTheme.value)
   const nextIndex = (currentIndex + 1) % themes.length
   setTheme(themes[nextIndex].value)
+}
+
+const handleEditNickname = async () => {
+  const currentNickname = authState.user?.nickname || ''
+  try {
+    const { value } = await ElMessageBox.prompt('请输入新的昵称', '修改昵称', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputValue: currentNickname,
+      inputPlaceholder: '昵称不能为空，最多 128 个字符',
+      inputValidator: (inputValue) => {
+        const nickname = (inputValue || '').trim()
+        if (!nickname) {
+          return '请输入昵称'
+        }
+        if (nickname.length > 128) {
+          return '昵称不能超过 128 个字符'
+        }
+        return true
+      }
+    })
+
+    const payload = await api.updateNickname(value.trim())
+    applySession(payload)
+    ElMessage.success('昵称已更新')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(getErrorMessage(error, '更新昵称失败'))
+  }
 }
 
 const openRagModal = () => {
