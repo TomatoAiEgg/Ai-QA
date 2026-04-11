@@ -196,28 +196,77 @@
 
       <el-dialog
         v-model="showCreateDialog"
-        :title="editingKb ? '编辑知识库' : '创建知识库'"
-        width="500px"
+        class="kb-form-dialog"
+        width="560px"
         :close-on-click-modal="false"
       >
-        <el-form :model="kbForm" label-width="100px">
-          <el-form-item label="名称" required>
-            <el-input v-model="kbForm.name" placeholder="例如：产品手册、员工手册、内部 FAQ" />
-          </el-form-item>
-          <el-form-item label="描述">
-            <el-input
-              v-model="kbForm.description"
-              type="textarea"
-              :rows="3"
-              placeholder="简单说明这个知识库准备存放哪些内容。"
-            />
-          </el-form-item>
-        </el-form>
+        <template #header>
+          <div class="kb-dialog-hero">
+            <div class="kb-dialog-icon">
+              <el-icon v-if="editingKb"><Edit /></el-icon>
+              <el-icon v-else><Plus /></el-icon>
+            </div>
+            <div class="kb-dialog-copy">
+              <div class="kb-dialog-eyebrow">KNOWLEDGE BASE</div>
+              <h3>{{ editingKb ? '编辑知识库' : '创建知识库' }}</h3>
+              <p>
+                {{ editingKb ? '调整知识库名称和说明，已上传文档不会受到影响。' : '为一组业务资料创建独立空间，后续可上传文档用于检索问答。' }}
+              </p>
+            </div>
+          </div>
+        </template>
+
+        <div class="kb-dialog-body">
+          <div class="kb-dialog-note">
+            <span class="kb-note-dot"></span>
+            建议按业务场景命名，例如“产品手册”“售后 FAQ”“内部制度”，方便聊天时快速选择。
+          </div>
+
+          <el-form class="kb-dialog-form" :model="kbForm" label-position="top">
+            <el-form-item label="知识库名称" required>
+              <el-input
+                v-model="kbForm.name"
+                size="large"
+                maxlength="64"
+                show-word-limit
+                clearable
+                placeholder="例如：产品手册、员工手册、内部 FAQ"
+              >
+                <template #prefix>
+                  <el-icon><Folder /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+
+            <el-form-item label="知识库描述">
+              <el-input
+                v-model="kbForm.description"
+                class="kb-dialog-textarea"
+                type="textarea"
+                :rows="4"
+                maxlength="200"
+                show-word-limit
+                placeholder="简单说明这个知识库准备存放哪些内容，便于后续维护。"
+              />
+            </el-form-item>
+          </el-form>
+
+          <div class="kb-dialog-tags">
+            <span>支持 PDF / Word / Markdown</span>
+            <span>自动切片处理</span>
+            <span>用于 RAG 检索</span>
+          </div>
+        </div>
+
         <template #footer>
-          <el-button @click="showCreateDialog = false">取消</el-button>
-          <el-button type="primary" @click="submitKbForm">
-            {{ editingKb ? '保存' : '创建' }}
-          </el-button>
+          <div class="kb-dialog-footer">
+            <el-button class="kb-dialog-cancel" @click="showCreateDialog = false">取消</el-button>
+            <el-button class="kb-dialog-submit" type="primary" @click="submitKbForm">
+              <el-icon v-if="editingKb"><Edit /></el-icon>
+              <el-icon v-else><Plus /></el-icon>
+              {{ editingKb ? '保存修改' : '创建知识库' }}
+            </el-button>
+          </div>
         </template>
       </el-dialog>
 
@@ -1149,9 +1198,192 @@ function documentStatusLabel(status) {
   white-space: pre-wrap;
 }
 
+.kb-dialog-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  gap: 16px;
+  padding: 22px 24px;
+  background:
+    radial-gradient(circle at 18% 0, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34%),
+    linear-gradient(135deg, #ffffff 0%, #f6f9ff 100%);
+}
+
+.kb-dialog-hero::after {
+  content: "";
+  position: absolute;
+  right: -42px;
+  top: -52px;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.kb-dialog-icon {
+  position: relative;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 16px;
+  color: white;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #ffffff));
+  box-shadow: 0 18px 30px -22px var(--accent-shadow);
+  font-size: 22px;
+}
+
+.kb-dialog-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.kb-dialog-eyebrow {
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.kb-dialog-copy h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.kb-dialog-copy p {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.kb-dialog-body {
+  padding: 20px 24px 6px;
+}
+
+.kb-dialog-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 16px;
+  color: #475569;
+  background: color-mix(in srgb, var(--accent) 7%, #ffffff);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.kb-note-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.kb-dialog-form {
+  display: grid;
+  gap: 4px;
+}
+
+.kb-dialog-form :deep(.el-form-item__label) {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.kb-dialog-form :deep(.el-input__wrapper),
+.kb-dialog-form :deep(.el-textarea__inner) {
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.22) inset;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.kb-dialog-form :deep(.el-input__wrapper.is-focus),
+.kb-dialog-form :deep(.el-textarea__inner:focus) {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent) inset;
+}
+
+.kb-dialog-textarea :deep(.el-textarea__inner) {
+  min-height: 108px !important;
+  resize: none;
+}
+
+.kb-dialog-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.kb-dialog-tags span {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kb-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.kb-dialog-cancel,
+.kb-dialog-submit {
+  height: 40px;
+  min-width: 104px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+.kb-dialog-submit {
+  box-shadow: 0 16px 26px -20px var(--accent-shadow);
+}
+
 @keyframes fadeCard {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+:deep(.kb-form-dialog) {
+  width: min(560px, calc(100vw - 32px)) !important;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 30px 58px -30px rgba(15, 23, 42, 0.34);
+}
+
+:deep(.kb-form-dialog .el-dialog__header) {
+  padding: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+}
+
+:deep(.kb-form-dialog .el-dialog__body) {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+:deep(.kb-form-dialog .el-dialog__footer) {
+  padding: 16px 24px 20px;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 :deep(.el-dialog) {
@@ -1219,5 +1451,34 @@ function documentStatusLabel(status) {
 @media (max-width: 640px) {
   .kb-grid { grid-template-columns: 1fr; }
   .doc-summary-main { flex-direction: column; align-items: flex-start; }
+
+  .kb-dialog-hero {
+    padding: 18px;
+    gap: 12px;
+  }
+
+  .kb-dialog-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+  }
+
+  .kb-dialog-copy h3 {
+    font-size: 20px;
+  }
+
+  .kb-dialog-body {
+    padding: 16px 18px 4px;
+  }
+
+  .kb-dialog-footer {
+    flex-direction: column-reverse;
+  }
+
+  .kb-dialog-cancel,
+  .kb-dialog-submit {
+    width: 100%;
+    margin: 0;
+  }
 }
 </style>
