@@ -63,12 +63,13 @@ services:
     environment:
       NAMESRV_ADDR: rocketmq-namesrv:9876
       JAVA_OPT_EXT: ${ROCKETMQ_JAVA_OPT_EXT:--server -Xms512m -Xmx512m -Xmn256m}
-    command: sh mqbroker -n rocketmq-namesrv:9876 autoCreateTopicEnable=true
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/conf/broker.conf
     ports:
       - "${ROCKETMQ_BROKER_HA_PORT:-10909}:10909"
       - "${ROCKETMQ_BROKER_PORT:-10911}:10911"
       - "${ROCKETMQ_BROKER_FAST_PORT:-10912}:10912"
     volumes:
+      - ./deploy/rocketmq/broker.conf:/home/rocketmq/conf/broker.conf
       - /opt/data/ai-qa/rocketmq/broker:/home/rocketmq/store
 
   rocketmq-dashboard:
