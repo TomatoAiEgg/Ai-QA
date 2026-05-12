@@ -121,7 +121,7 @@ services:
       AI_DOCUMENT_PROCESS_NAME_SERVER: rocketmq-namesrv:9876
       JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx1024m}
     ports:
-      - "${BACKEND_PORT:-7000}:7000"
+      - "${BACKEND_PORT:-17000}:17000"
     volumes:
       - /opt/logs/ai-qa:/opt/logs/ai-qa
 
