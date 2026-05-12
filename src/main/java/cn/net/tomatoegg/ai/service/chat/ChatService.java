@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -21,6 +22,9 @@ public class ChatService {
 
     private static final String RAG_SYSTEM_PROMPT = "你是一个智能助手，请根据用户提供的上下文信息回答问题。如果不确定或上下文不包含相关信息，请直接回答不知道，不要编造内容。";
     private static final String NORMAL_SYSTEM_PROMPT = "你是一名专业的智能助手，请基于上下文对话历史，准确、简洁地回答用户问题。如果你不确定答案，请直接说明不知道。";
+
+    private static final int DEFAULT_RAG_TOP_K = 5;
+    private static final int FULL_CONTEXT_CHUNK_LIMIT = 30;
 
     private final ChatClient chatClient;
     private final QwenIntegration qwenIntegration;
@@ -47,8 +51,12 @@ public class ChatService {
         if (conversationId != null) {
             conversationService.addUserMessage(userId, conversationId, question);
         }
-
-        List<Document> documents = knowledgeBaseSearchService.searchFromKnowledgeBase(question, kbId, 5, userId);
+        boolean fullDocumentContext = requiresFullDocumentContext(question);
+        log.info("开始知识库检索, kbId={}, userId={}, question={}, fullDocumentContext={}",
+                kbId, userId, question, fullDocumentContext);
+        List<Document> documents = fullDocumentContext
+                ? knowledgeBaseSearchService.loadOrderedContextFromKnowledgeBase(kbId, FULL_CONTEXT_CHUNK_LIMIT, userId)
+                : knowledgeBaseSearchService.searchFromKnowledgeBase(question, kbId, DEFAULT_RAG_TOP_K, userId);
         if (documents.isEmpty()) {
             String fallback = "抱歉，知识库中没有找到相关信息。";
             if (conversationId != null) {
@@ -56,8 +64,8 @@ public class ChatService {
             }
             return Flux.just(fallback);
         }
-
-        if (rerankService.isEnabled()) {
+        log.info("知识库检索完成, 命中文档数={}", documents.size());
+        if (!fullDocumentContext && rerankService.isEnabled()) {
             documents = rerankService.rerank(question, documents);
             if (documents.isEmpty()) {
                 String fallback = "抱歉，知识库中没有找到与你的问题高度相关的信息。";
@@ -104,6 +112,25 @@ public class ChatService {
                     }
                     log.info("普通对话完成: {}", fullReply);
                 });
+    }
+
+    private boolean requiresFullDocumentContext(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String normalized = question.toLowerCase(Locale.ROOT);
+        return normalized.contains("解析")
+                || normalized.contains("总结")
+                || normalized.contains("概括")
+                || normalized.contains("全文")
+                || normalized.contains("整篇")
+                || normalized.contains("简历")
+                || normalized.contains("这份文档")
+                || normalized.contains("这篇文档")
+                || normalized.contains("resume")
+                || normalized.contains("cv")
+                || normalized.contains("summary")
+                || normalized.contains("summarize");
     }
 
     private String buildHistory(UUID userId, UUID conversationId) {

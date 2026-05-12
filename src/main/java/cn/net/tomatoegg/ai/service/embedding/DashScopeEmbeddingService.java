@@ -41,6 +41,7 @@ public class DashScopeEmbeddingService {
     }
 
     private float[] embedWithFallback(String text, List<String> candidates, int candidateIndex, int retryAttempt) {
+
         if (candidateIndex >= candidates.size()) {
             throw new IllegalStateException("当前没有可用的向量模型，请稍后再试");
         }

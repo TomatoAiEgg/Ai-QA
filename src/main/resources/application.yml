@@ -54,7 +54,7 @@ spring:
     suffix: .html
 
 server:
-  port: 7000
+  port: 17000
 
 logging:
   config: classpath:logback-spring.xml
@@ -89,7 +89,7 @@ ai:
       top-n: 3
     model-router:
       chat:
-        default-model: ${AI_CHAT_DEFAULT_MODEL:qwen-vl-plus-latest}
+        default-model: ${AI_CHAT_DEFAULT_MODEL:qwen3-vl-235b-a22b-thinking}
         fallback-models:
           - ${AI_CHAT_FALLBACK_MODEL_1:qwen-coder-turbo-0919}
           - ${AI_CHAT_FALLBACK_MODEL_2:qwen3-vl-235b-a22b-thinking}
@@ -102,11 +102,9 @@ ai:
         exhausted-ttl: ${AI_CHAT_EXHAUSTED_TTL:PT1H}
         transient-retries: ${AI_CHAT_TRANSIENT_RETRIES:1}
       embedding:
-        default-model: ${AI_EMBEDDING_DEFAULT_MODEL:text-embedding-async-v2}
+        default-model: ${AI_EMBEDDING_DEFAULT_MODEL:text-embedding-v2}
         fallback-models:
-          - ${AI_EMBEDDING_FALLBACK_MODEL_1:text-embedding-async-v1}
-          - ${AI_EMBEDDING_FALLBACK_MODEL_2:text-embedding-v2}
-          - ${AI_EMBEDDING_FALLBACK_MODEL_3:text-embedding-v1}
+          - ${AI_EMBEDDING_FALLBACK_MODEL_1:text-embedding-v1}
         exhausted-ttl: ${AI_EMBEDDING_EXHAUSTED_TTL:PT1H}
         transient-retries: ${AI_EMBEDDING_TRANSIENT_RETRIES:1}
     rocketmq:

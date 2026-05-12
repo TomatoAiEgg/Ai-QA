@@ -16,6 +16,9 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
@@ -25,12 +28,19 @@ import org.springframework.cache.CacheManager;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -38,6 +48,11 @@ public class DocumentProcessingService {
 
     private static final int MAX_ERROR_MESSAGE_LENGTH = 500;
     private static final int MAX_EMBEDDING_BATCH_SIZE = 10;
+    private static final int STRUCTURED_SECTION_TARGET_CHARS = 1600;
+    private static final Pattern PDF_GARBAGE_LINE = Pattern.compile("^[A-Za-z0-9_-]{24,}$");
+    private static final Pattern MARKDOWN_HEADING = Pattern.compile("^#{1,6}\\s+(.+)$");
+    private static final Pattern MAJOR_TEXT_HEADING = Pattern.compile(
+            "^(个人信息|联系方式|掌握技能|专业技能|技能清单|教育经历|工作经历|工作经验|项目经历|项目经验|实习经历|校园经历|证书|个人优势|自我评价|总结)$");
 
     private final TokenTextSplitter tokenTextSplitter;
     private final DashScopeEmbeddingService embeddingService;
@@ -101,7 +116,7 @@ public class DocumentProcessingService {
             List<Document> splitDocuments;
             try (StoredDocumentSource source =
                          documentStorageService.openProcessingSource(docRecord.getStoragePath(), docRecord.getFilename())) {
-                documents = readDocuments(source.path());
+                documents = readDocuments(source.path(), docRecord.getFilename());
                 totalOriginalChars = documents.stream().mapToInt(doc -> doc.getContent().length()).sum();
                 splitDocuments = tokenTextSplitter.apply(documents);
             }
@@ -232,9 +247,238 @@ public class DocumentProcessingService {
         }
     }
 
-    private List<Document> readDocuments(Path filePath) {
+    private List<Document> readDocuments(Path filePath, String filename) {
+        String extension = resolveExtension(filePath, filename);
+        if ("pdf".equals(extension)) {
+            return readPdfDocuments(filePath, filename);
+        }
+        if ("md".equals(extension) || "markdown".equals(extension)) {
+            return readMarkdownDocuments(filePath, filename);
+        }
+        if ("txt".equals(extension)) {
+            return readTextDocuments(filePath, filename);
+        }
+        return readTikaDocuments(filePath, filename, extension);
+    }
+
+    private List<Document> readPdfDocuments(Path filePath, String filename) {
+        try (PDDocument pdfDocument = Loader.loadPDF(filePath.toFile())) {
+            PDFTextStripper textStripper = new PDFTextStripper();
+            textStripper.setSortByPosition(true);
+
+            String text = cleanPdfText(textStripper.getText(pdfDocument));
+            if (text.isBlank()) {
+                return List.of();
+            }
+
+            return splitStructuredTextDocuments(text, filePath, filename, "pdf");
+        } catch (IOException ex) {
+            throw new BusinessException(ApiCode.DOCUMENT_UPLOAD_FAILED, "PDF 文档解析失败: " + ex.getMessage(), ex);
+        }
+    }
+
+    private List<Document> readMarkdownDocuments(Path filePath, String filename) {
+        String text = cleanPlainText(readTextFile(filePath));
+        if (text.isBlank()) {
+            return List.of();
+        }
+        return splitMarkdownDocuments(text, filePath, filename);
+    }
+
+    private List<Document> readTextDocuments(Path filePath, String filename) {
+        String text = cleanPlainText(readTextFile(filePath));
+        if (text.isBlank()) {
+            return List.of();
+        }
+        return splitStructuredTextDocuments(text, filePath, filename, "txt");
+    }
+
+    private List<Document> readTikaDocuments(Path filePath, String filename, String extension) {
         TikaDocumentReader reader = new TikaDocumentReader(new FileSystemResource(filePath));
-        return reader.read();
+        String sourceType = extension.isBlank() ? "document" : extension;
+        return reader.read().stream()
+                .flatMap(document -> {
+                    String text = cleanPlainText(document.getContent());
+                    if (text.isBlank()) {
+                        return List.<Document>of().stream();
+                    }
+                    return splitStructuredTextDocuments(text, filePath, filename, sourceType).stream();
+                })
+                .toList();
+    }
+
+    private String readTextFile(Path filePath) {
+        try {
+            return Files.readString(filePath, StandardCharsets.UTF_8);
+        } catch (MalformedInputException ex) {
+            try {
+                return Files.readString(filePath, Charset.forName("GB18030"));
+            } catch (IOException fallbackEx) {
+                throw new BusinessException(ApiCode.DOCUMENT_UPLOAD_FAILED, "文本文件读取失败: " + fallbackEx.getMessage(), fallbackEx);
+            }
+        } catch (IOException ex) {
+            throw new BusinessException(ApiCode.DOCUMENT_UPLOAD_FAILED, "文本文件读取失败: " + ex.getMessage(), ex);
+        }
+    }
+
+    private String resolveExtension(Path filePath, String filename) {
+        String name = filename != null && !filename.isBlank()
+                ? filename
+                : filePath.getFileName().toString();
+        int dotIndex = name.lastIndexOf('.');
+        return dotIndex >= 0 && dotIndex + 1 < name.length()
+                ? name.substring(dotIndex + 1).toLowerCase(Locale.ROOT)
+                : "";
+    }
+
+    private String cleanPdfText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+
+        String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
+        StringBuilder cleaned = new StringBuilder(normalized.length());
+        String[] lines = normalized.split("\n", -1);
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (isPdfGarbageLine(trimmed)) {
+                continue;
+            }
+            cleaned.append(trimmed).append('\n');
+        }
+
+        return cleaned.toString()
+                .replaceAll("\n{3,}", "\n\n")
+                .trim();
+    }
+
+    private boolean isPdfGarbageLine(String line) {
+        return PDF_GARBAGE_LINE.matcher(line).matches();
+    }
+
+    private String cleanPlainText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
+        StringBuilder cleaned = new StringBuilder(normalized.length());
+        String[] lines = normalized.split("\n", -1);
+
+        for (String line : lines) {
+            String normalizedLine = line.stripTrailing();
+            cleaned.append(normalizedLine).append('\n');
+        }
+
+        return cleaned.toString()
+                .replaceAll("[\\t ]{2,}", " ")
+                .replaceAll("\n{3,}", "\n\n")
+                .trim();
+    }
+
+    private List<Document> splitMarkdownDocuments(String text, Path filePath, String filename) {
+        List<Document> sections = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        String currentTitle = "正文";
+        int sectionIndex = 0;
+        boolean foundHeading = false;
+
+        for (String line : text.split("\n")) {
+            java.util.regex.Matcher matcher = MARKDOWN_HEADING.matcher(line.trim());
+            if (matcher.matches()) {
+                sectionIndex = appendSection(sections, current, currentTitle, sectionIndex, filePath, filename, "markdown");
+                currentTitle = matcher.group(1).trim();
+                foundHeading = true;
+            }
+            current.append(line).append('\n');
+        }
+        sectionIndex = appendSection(sections, current, currentTitle, sectionIndex, filePath, filename, "markdown");
+
+        return foundHeading && !sections.isEmpty()
+                ? sections
+                : splitParagraphDocuments(text, filePath, filename, "markdown", "正文");
+    }
+
+    private List<Document> splitStructuredTextDocuments(String text, Path filePath, String filename, String sourceType) {
+        List<Document> sections = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        String currentTitle = "正文";
+        int sectionIndex = 0;
+        boolean foundHeading = false;
+
+        for (String line : text.split("\n")) {
+            String trimmed = line.trim();
+            if (isMajorTextHeading(trimmed)) {
+                sectionIndex = appendSection(sections, current, currentTitle, sectionIndex, filePath, filename, sourceType);
+                currentTitle = normalizeHeading(trimmed);
+                foundHeading = true;
+            }
+            current.append(line).append('\n');
+        }
+        sectionIndex = appendSection(sections, current, currentTitle, sectionIndex, filePath, filename, sourceType);
+
+        return foundHeading && !sections.isEmpty()
+                ? sections
+                : splitParagraphDocuments(text, filePath, filename, sourceType, "正文");
+    }
+
+    private List<Document> splitParagraphDocuments(String text,
+                                                   Path filePath,
+                                                   String filename,
+                                                   String sourceType,
+                                                   String defaultTitle) {
+        List<Document> sections = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int sectionIndex = 0;
+
+        for (String block : text.split("\n\\s*\n")) {
+            String normalizedBlock = block.trim();
+            if (normalizedBlock.isBlank()) {
+                continue;
+            }
+            if (current.length() > 0
+                    && current.length() + normalizedBlock.length() > STRUCTURED_SECTION_TARGET_CHARS) {
+                sectionIndex = appendSection(sections, current, defaultTitle, sectionIndex, filePath, filename, sourceType);
+            }
+            current.append(normalizedBlock).append("\n\n");
+        }
+        appendSection(sections, current, defaultTitle, sectionIndex, filePath, filename, sourceType);
+        return sections;
+    }
+
+    private int appendSection(List<Document> sections,
+                              StringBuilder content,
+                              String sectionTitle,
+                              int sectionIndex,
+                              Path filePath,
+                              String filename,
+                              String sourceType) {
+        String sectionContent = content.toString().trim();
+        content.setLength(0);
+        if (sectionContent.isBlank() || isHeadingOnlySection(sectionContent, sectionTitle)) {
+            return sectionIndex;
+        }
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("source", filePath.toString());
+        metadata.put("filename", filename != null && !filename.isBlank() ? filename : filePath.getFileName().toString());
+        metadata.put("source_type", sourceType);
+        metadata.put("section_title", sectionTitle);
+        metadata.put("section_index", sectionIndex);
+        sections.add(new Document(sectionContent, metadata));
+        return sectionIndex + 1;
+    }
+
+    private boolean isHeadingOnlySection(String content, String sectionTitle) {
+        return normalizeHeading(content).equals(normalizeHeading(sectionTitle));
+    }
+
+    private boolean isMajorTextHeading(String line) {
+        return !line.isBlank() && MAJOR_TEXT_HEADING.matcher(normalizeHeading(line)).matches();
+    }
+
+    private String normalizeHeading(String line) {
+        return line.replaceAll("[：:]+$", "").trim();
     }
 
     private void persistDocumentChunks(KnowledgeBaseDocument docRecord, List<Document> splitDocuments) {

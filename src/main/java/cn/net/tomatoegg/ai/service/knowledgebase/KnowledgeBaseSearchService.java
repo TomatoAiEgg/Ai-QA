@@ -8,6 +8,7 @@ import cn.net.tomatoegg.ai.mapper.KnowledgeBaseMapper;
 import cn.net.tomatoegg.ai.mapper.VectorStoreMapper;
 import cn.net.tomatoegg.ai.service.embedding.DashScopeEmbeddingService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +52,33 @@ public class KnowledgeBaseSearchService {
             log.info("RAG 检索完成, mode=all-kb, userId={}, topK={}, hitCount={}", userId, topK, chunks.size());
         }
         return chunks.stream()
+                .map(this::toDocument)
+                .collect(Collectors.toList());
+    }
+
+    public List<Document> loadOrderedContextFromKnowledgeBase(UUID kbId, int limit, UUID userId) {
+        int safeLimit = Math.max(1, limit);
+        List<VectorStoreChunk> chunks;
+        if (kbId != null) {
+            requireOwnedKnowledgeBase(userId, kbId);
+            chunks = vectorStoreMapper.selectList(new QueryWrapper<VectorStoreChunk>()
+                    .select("content", "metadata::text AS metadata_json")
+                    .eq("kb_id", kbId)
+                    .orderByAsc("doc_id", "chunk_index")
+                    .last("LIMIT " + safeLimit));
+            log.info("RAG ordered context loaded, mode=single-kb, userId={}, kbId={}, limit={}, hitCount={}",
+                    userId, kbId, safeLimit, chunks.size());
+        } else {
+            chunks = vectorStoreMapper.selectList(new QueryWrapper<VectorStoreChunk>()
+                    .select("content", "metadata::text AS metadata_json")
+                    .eq("user_id", userId)
+                    .orderByAsc("doc_id", "chunk_index")
+                    .last("LIMIT " + safeLimit));
+            log.info("RAG ordered context loaded, mode=all-kb, userId={}, limit={}, hitCount={}",
+                    userId, safeLimit, chunks.size());
+        }
+        return chunks.stream()
+                .peek(chunk -> chunk.setScore(1.0))
                 .map(this::toDocument)
                 .collect(Collectors.toList());
     }
